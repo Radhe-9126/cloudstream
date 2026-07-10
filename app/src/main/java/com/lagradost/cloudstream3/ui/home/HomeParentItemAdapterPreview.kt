@@ -93,15 +93,6 @@ class HomeParentItemAdapterPreview(
             val params = binding.horizontalScrollChips.layoutParams as ViewGroup.MarginLayoutParams
             params.marginEnd = marginInPixels
             binding.horizontalScrollChips.layoutParams = params
-            binding.homeWatchParentItemTitle.setCompoundDrawablesWithIntrinsicBounds(
-                null,
-                null,
-                ContextCompat.getDrawable(
-                    parent.context,
-                    R.drawable.ic_baseline_arrow_forward_24
-                ),
-                null
-            )
         }
 
         return HeaderViewHolder(binding, viewModel, accountViewModel)
@@ -137,10 +128,6 @@ class HomeParentItemAdapterPreview(
         override fun save(): Bundle =
             Bundle().apply {
                 putParcelable(
-                    "resumeRecyclerView",
-                    resumeRecyclerView.layoutManager?.onSaveInstanceState()
-                )
-                putParcelable(
                     "bookmarkRecyclerView",
                     bookmarkRecyclerView.layoutManager?.onSaveInstanceState()
                 )
@@ -148,9 +135,6 @@ class HomeParentItemAdapterPreview(
             }
 
         override fun restore(state: Bundle) {
-            state.getSafeParcelable<Parcelable>("resumeRecyclerView")?.let { recycle ->
-                resumeRecyclerView.layoutManager?.onRestoreInstanceState(recycle)
-            }
             state.getSafeParcelable<Parcelable>("bookmarkRecyclerView")?.let { recycle ->
                 bookmarkRecyclerView.layoutManager?.onRestoreInstanceState(recycle)
             }
@@ -162,88 +146,6 @@ class HomeParentItemAdapterPreview(
             )
         }
 
-        private val resumeAdapter = ResumeItemAdapter(
-            nextFocusUp = itemView.nextFocusUpId,
-            nextFocusDown = itemView.nextFocusDownId,
-            removeCallback = { v ->
-                try {
-                    val context = v.context ?: return@ResumeItemAdapter
-                    val builder: AlertDialog.Builder =
-                        AlertDialog.Builder(context)
-                    // Copy pasted from https://github.com/recloudstream/cloudstream/pull/1658/files
-                    builder.apply {
-                        setTitle(R.string.clear_history)
-                        setMessage(
-                            context.getString(R.string.delete_message).format(
-                                context.getString(
-                                    R.string.continue_watching
-                                )
-                            )
-                        )
-                        setNegativeButton(R.string.cancel) { _, _ -> /*NO-OP*/ }
-                        setPositiveButton(R.string.delete) { _, _ ->
-                            DataStoreHelper.deleteAllResumeStateIds()
-                            viewModel.reloadStored()
-                        }
-                        show().setDefaultFocus()
-                    }
-                } catch (t: Throwable) {
-                    // This may throw a formatting error
-                    logError(t)
-                }
-            },
-            clickCallback = { callback ->
-                if (callback.action != SEARCH_ACTION_SHOW_METADATA) {
-                    viewModel.click(callback)
-                    return@ResumeItemAdapter
-                }
-                callback.view.context?.getActivity()?.showOptionSelectStringRes(
-                    callback.view,
-                    callback.card.posterUrl,
-                    listOf(
-                        R.string.action_open_watching,
-                        R.string.action_remove_watching
-                    ),
-                    listOf(
-                        R.string.action_open_play,
-                        R.string.action_open_watching,
-                        R.string.action_remove_watching
-                    )
-                ) { (isTv, actionId) ->
-                    when (actionId + if (isTv) 0 else 1) {
-                        // play
-                        0 -> {
-                            viewModel.click(
-                                SearchClickCallback(
-                                    START_ACTION_RESUME_LATEST,
-                                    callback.view,
-                                    -1,
-                                    callback.card
-                                )
-                            )
-                        }
-                        //info
-                        1 -> {
-                            viewModel.click(
-                                SearchClickCallback(
-                                    SEARCH_ACTION_LOAD,
-                                    callback.view,
-                                    -1,
-                                    callback.card
-                                )
-                            )
-                        }
-                        // remove
-                        2 -> {
-                            val card = callback.card
-                            if (card is DataStoreHelper.ResumeWatchingResult) {
-                                DataStoreHelper.removeLastWatched(card.parentId)
-                                viewModel.reloadStored()
-                            }
-                        }
-                    }
-                }
-            })
         private val bookmarkAdapter = HomeChildItemAdapter(
             id = "bookmarkAdapter".hashCode(),
             nextFocusUp = itemView.nextFocusUpId,
@@ -314,9 +216,6 @@ class HomeParentItemAdapterPreview(
             itemView.findViewById(R.id.home_preview_viewpager_text)
 
         // private val previewHeader: FrameLayout = itemView.findViewById(R.id.home_preview)
-        private val resumeHolder: View = itemView.findViewById(R.id.home_watch_holder)
-        private val resumeRecyclerView: RecyclerView =
-            itemView.findViewById(R.id.home_watch_child_recyclerview)
         private val bookmarkHolder: View = itemView.findViewById(R.id.home_bookmarked_holder)
         private val bookmarkRecyclerView: RecyclerView =
             itemView.findViewById(R.id.home_bookmarked_child_recyclerview)
@@ -510,14 +409,8 @@ class HomeParentItemAdapterPreview(
             previewViewpager.setPageTransformer(HomeScrollTransformer())
 
             previewViewpager.adapter = previewAdapter
-            resumeRecyclerView.adapter = resumeAdapter
             bookmarkRecyclerView.setRecycledViewPool(HomeChildItemAdapter.sharedPool)
             bookmarkRecyclerView.adapter = bookmarkAdapter
-
-            resumeRecyclerView.setLinearListLayout(
-                nextLeft = R.id.nav_rail_view,
-                nextRight = FOCUS_SELF
-            )
 
             bookmarkRecyclerView.setLinearListLayout(
                 nextLeft = R.id.nav_rail_view,
@@ -707,35 +600,6 @@ class HomeParentItemAdapterPreview(
             }
         }
 
-        private fun updateResume(resumeWatching: List<SearchResponse>) {
-            resumeHolder.isVisible = resumeWatching.isNotEmpty()
-            resumeAdapter.submitList(resumeWatching)
-
-            if (
-                binding is FragmentHomeHeadBinding ||
-                binding is FragmentHomeHeadTvBinding &&
-                isLayout(EMULATOR)
-            ) {
-                val title = (binding as? FragmentHomeHeadBinding)?.homeWatchParentItemTitle
-                    ?: (binding as? FragmentHomeHeadTvBinding)?.homeWatchParentItemTitle
-
-                title?.setOnClickListener {
-                    viewModel.popup(
-                        HomeViewModel.ExpandableHomepageList(
-                            HomePageList(
-                                title.text.toString(),
-                                resumeWatching,
-                                false
-                            ), 1, false
-                        ),
-                        deleteCallback = {
-                            viewModel.deleteResumeWatching()
-                        }
-                    )
-                }
-            }
-        }
-
         private fun updateBookmarks(data: Pair<Boolean, List<SearchResponse>>) {
             val (visible, list) = data
             bookmarkHolder.isVisible = visible
@@ -783,9 +647,6 @@ class HomeParentItemAdapterPreview(
                         binding.homePreviewReloadProvider.isGone = (name == noneApi.name)
                     }
                 }*/
-                observe(viewModel.resumeWatching) {
-                    updateResume(it)
-                }
                 observe(viewModel.bookmarks) {
                     updateBookmarks(it)
                 }

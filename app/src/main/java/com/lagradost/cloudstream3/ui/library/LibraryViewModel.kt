@@ -12,9 +12,26 @@ import com.lagradost.cloudstream3.mvvm.Resource
 import com.lagradost.cloudstream3.mvvm.throwAbleToResource
 import com.lagradost.cloudstream3.syncproviders.AccountManager
 import com.lagradost.cloudstream3.syncproviders.SyncAPI
+import androidx.lifecycle.viewModelScope
+import com.lagradost.cloudstream3.CommonActivity.activity
+import com.lagradost.cloudstream3.SearchResponse
+import com.lagradost.cloudstream3.ui.home.HomeViewModel
+import com.lagradost.cloudstream3.ui.settings.Globals.TV
+import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
+import com.lagradost.cloudstream3.utils.AppContextUtils.addProgramsToContinueWatching
 import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
+import com.lagradost.cloudstream3.mvvm.launchSafe
+import android.os.Build
+import com.lagradost.cloudstream3.utils.DOWNLOAD_HEADER_CACHE
+import com.lagradost.cloudstream3.utils.DOWNLOAD_HEADER_CACHE_BACKUP
 import com.lagradost.cloudstream3.utils.DataStoreHelper
 import com.lagradost.cloudstream3.utils.DataStoreHelper.currentAccount
+import com.lagradost.cloudstream3.utils.DataStoreHelper.getAllResumeStateIds
+import com.lagradost.cloudstream3.utils.DataStoreHelper.getLastWatched
+import com.lagradost.cloudstream3.utils.DataStoreHelper.getViewPos
+import com.lagradost.cloudstream3.utils.downloader.DownloadObjects
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 enum class ListSorting(@StringRes val stringRes: Int) {
     Query(R.string.none),
@@ -40,6 +57,31 @@ class LibraryViewModel : ViewModel() {
 
     private val _pages: MutableLiveData<Resource<List<SyncAPI.Page>>> = MutableLiveData(null)
     val pages: LiveData<Resource<List<SyncAPI.Page>>> = _pages
+
+    private val _resumeWatching = MutableLiveData<List<SearchResponse>>()
+    val resumeWatching: LiveData<List<SearchResponse>> = _resumeWatching
+
+    private fun loadResumeWatching() = viewModelScope.launchSafe {
+        val resumeWatchingResult = getResumeWatching()
+        if (isLayout(TV) && resumeWatchingResult != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            ioSafe {
+                // this WILL crash on non tvs, so keep this inside a try catch
+                activity?.addProgramsToContinueWatching(resumeWatchingResult)
+            }
+        }
+        resumeWatchingResult?.let {
+            _resumeWatching.postValue(it)
+        }
+    }
+
+    fun deleteResumeWatching() {
+        DataStoreHelper.deleteAllResumeStateIds()
+        loadResumeWatching()
+    }
+
+    fun reloadStored() {
+        loadResumeWatching()
+    }
 
     private val _currentApiName: MutableLiveData<String> = MutableLiveData("")
     val currentApiName: LiveData<String> = _currentApiName
@@ -135,12 +177,66 @@ class LibraryViewModel : ViewModel() {
         }
     }
 
+    private fun bookmarksUpdated(unused: Boolean) {
+        reloadStored()
+    }
+
     init {
         MainActivity.reloadLibraryEvent += ::reloadPages
+        MainActivity.bookmarksUpdatedEvent += ::bookmarksUpdated
+        reloadStored()
     }
 
     override fun onCleared() {
         MainActivity.reloadLibraryEvent -= ::reloadPages
+        MainActivity.bookmarksUpdatedEvent -= ::bookmarksUpdated
         super.onCleared()
+    }
+
+    companion object {
+        suspend fun getResumeWatching(): List<DataStoreHelper.ResumeWatchingResult>? = withContext(Dispatchers.IO) {
+            val resumeWatchingIds = getAllResumeStateIds() ?: return@withContext null
+            
+            resumeWatchingIds.mapNotNull { id ->
+                getLastWatched(id)
+            }.sortedByDescending { it.updateTime }.mapNotNull { resume ->
+                val headerCache = getKey<DownloadObjects.DownloadHeaderCached>(
+                    DOWNLOAD_HEADER_CACHE,
+                    resume.parentId.toString()
+                )
+
+                val data = if (headerCache == null) {
+                    // We store resume watching data in download header cache
+                    // Because downloads automatically pruned outdated download headers we
+                    // removed resume watching data. We should restore the data for affected users.
+                    val oldData = getKey<DownloadObjects.DownloadHeaderCached>(
+                        DOWNLOAD_HEADER_CACHE_BACKUP,
+                        resume.parentId.toString()
+                    ) ?: return@mapNotNull null
+
+                    // Restore data
+                    setKey(DOWNLOAD_HEADER_CACHE, resume.parentId.toString(), oldData)
+                    oldData
+                } else {
+                    headerCache
+                }
+
+                val watchPos = getViewPos(resume.episodeId)
+
+                DataStoreHelper.ResumeWatchingResult(
+                    data.name,
+                    data.url,
+                    data.apiName,
+                    data.type,
+                    data.poster,
+                    watchPos,
+                    resume.episodeId,
+                    resume.parentId,
+                    resume.episode,
+                    resume.season,
+                    resume.isFromDownload
+                )
+            }
+        }
     }
 }

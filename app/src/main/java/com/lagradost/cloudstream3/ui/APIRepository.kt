@@ -1,5 +1,6 @@
 package com.lagradost.cloudstream3.ui
 
+import com.lagradost.api.Log
 import com.lagradost.cloudstream3.APIHolder.unixTime
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
 import com.lagradost.cloudstream3.DubStatus
@@ -153,40 +154,81 @@ class APIRepository(val api: MainAPI) {
         delay(delta)
     }
 
-    suspend fun getMainPage(page: Int, nameIndex: Int? = null): Resource<List<HomePageResponse?>> {
+    suspend fun getMainPage(
+        page: Int,
+        nameIndex: Int? = null
+    ): Resource<List<HomePageResponse?>> {
+
         return safeApiCall {
             withTimeout(getTimeout(api.getMainPageTimeoutMs)) {
+
                 api.lastHomepageRequest = unixTimeMS
 
+
                 nameIndex?.let { api.mainPage.getOrNull(it) }?.let { data ->
-                    listOf(
-                        api.getMainPage(
-                            page,
-                            MainPageRequest(data.name, data.data, data.horizontalImages)
+
+                    val start = System.currentTimeMillis()
+
+                    val result = api.getMainPage(
+                        page,
+                        MainPageRequest(
+                            data.name,
+                            data.data,
+                            data.horizontalImages
                         )
                     )
+
+                    listOf(result)
+
                 } ?: run {
+
                     if (api.sequentialMainPage) {
+
                         var first = true
+
                         api.mainPage.map { data ->
-                            if (!first) // dont want to sleep on first request
+
+                            if (!first) {
                                 delay(api.sequentialMainPageDelay)
+                            }
                             first = false
 
-                            api.getMainPage(
+                            val start = System.currentTimeMillis()
+
+                            val result = api.getMainPage(
                                 page,
-                                MainPageRequest(data.name, data.data, data.horizontalImages)
+                                MainPageRequest(
+                                    data.name,
+                                    data.data,
+                                    data.horizontalImages
+                                )
                             )
+
+                            result
                         }
+
                     } else {
+
                         with(CoroutineScope(coroutineContext)) {
+
                             api.mainPage.map { data ->
+
                                 async {
-                                    api.getMainPage(
+
+                                    val start = System.currentTimeMillis()
+
+                                    val result = api.getMainPage(
                                         page,
-                                        MainPageRequest(data.name, data.data, data.horizontalImages)
+                                        MainPageRequest(
+                                            data.name,
+                                            data.data,
+                                            data.horizontalImages
+                                        )
                                     )
+
+                                    result
                                 }
+
                             }.map { it.await() }
                         }
                     }

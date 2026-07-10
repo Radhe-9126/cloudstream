@@ -43,66 +43,6 @@ class HomeScrollViewHolderState(view: ViewBinding) : ViewHolderState<Boolean>(vi
     }
 }
 
-class ResumeItemAdapter(
-    nextFocusUp: Int? = null,
-    nextFocusDown: Int? = null,
-    clickCallback: (SearchClickCallback) -> Unit,
-    private val removeCallback: (View) -> Unit,
-) : HomeChildItemAdapter(
-    id = "resumeAdapter".hashCode(),
-    nextFocusUp = nextFocusUp,
-    nextFocusDown = nextFocusDown,
-    clickCallback = clickCallback
-) {
-    // As there is no popup on TV we instead use the footer to clear
-    override val footers = if (isLayout(TV or EMULATOR)) 1 else 0
-
-    override fun onCreateFooter(parent: ViewGroup): ViewHolderState<Boolean> {
-        val expanded = parent.context.isBottomLayout()
-        val inflater = LayoutInflater.from(parent.context)
-        val binding = if (expanded) HomeRemoveGridExpandedBinding.inflate(
-            inflater,
-            parent,
-            false
-        ) else HomeRemoveGridBinding.inflate(inflater, parent, false)
-        return HomeScrollViewHolderState(binding)
-    }
-
-    override fun onClearView(holder: ViewHolderState<Boolean>) {
-        // Clear the image, idk if this saves ram or not, but I guess?
-        clearImage(holder.view.root.findViewById(R.id.imageView))
-    }
-
-    override fun onBindFooter(holder: ViewHolderState<Boolean>) {
-        this.applyBinding(holder, false)
-        when (val binding = holder.view) {
-            is HomeRemoveGridBinding -> {
-                updateLayoutParms(binding.backgroundCard, setWidth, setHeight)
-            }
-
-            is HomeRemoveGridExpandedBinding -> {
-                updateLayoutParms(binding.backgroundCard, setWidth, setHeight)
-            }
-        }
-        holder.itemView.apply {
-            if (isLayout(TV)) {
-                isFocusableInTouchMode = true
-                isFocusable = true
-            }
-            nextFocusUp?.let {
-                nextFocusUpId = it
-            }
-            nextFocusDown?.let {
-                nextFocusDownId = it
-            }
-
-            setOnClickListener { v ->
-                removeCallback.invoke(v ?: return@setOnClickListener)
-            }
-        }
-    }
-}
-
 /** Remember to set `updatePosterSize` to cache the poster size,
  * otherwise the width and height is unset */
 open class HomeChildItemAdapter(

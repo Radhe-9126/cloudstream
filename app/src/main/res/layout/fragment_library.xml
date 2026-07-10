@@ -27,81 +27,120 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            app:layout_scrollFlags="scroll|enterAlways">
+            android:orientation="vertical"
+            app:layout_scrollFlags="scroll">
 
-            <ImageView
-                android:id="@+id/provider_selector"
-                android:layout_width="25dp"
-                android:layout_height="25dp"
-                android:layout_gravity="end|center_vertical"
-                android:layout_marginStart="10dp"
-                android:background="?selectableItemBackgroundBorderless"
-                android:contentDescription="@string/change_providers_img_des"
-                android:src="@drawable/ic_baseline_extension_24"
-                app:tint="?attr/textColor" />
-
-            <ImageView
-                android:id="@+id/library_sort"
-                android:layout_width="45dp"
-                android:layout_height="45dp"
-                android:layout_gravity="end|center_vertical"
-                android:layout_marginStart="10dp"
-                android:background="?selectableItemBackgroundBorderless"
-                android:contentDescription="@string/change_providers_img_des"
-                android:padding="5dp"
-                android:src="@drawable/ic_baseline_sort_24"
-                android:visibility="gone"
-                app:tint="?attr/textColor"
-                tools:visibility="visible" />
-
-            <FrameLayout
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="40dp"
-                android:layout_margin="10dp"
-                android:background="@drawable/search_background"
-                android:visibility="visible"
-                app:layout_scrollFlags="scroll|enterAlways">
-
-                <androidx.appcompat.widget.SearchView
-                    android:id="@+id/main_search"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_gravity="center_vertical"
-                    android:layout_marginEnd="25dp"
-
-                    android:iconifiedByDefault="false"
-                    android:imeOptions="actionSearch"
-
-                    android:inputType="text"
-                    android:nextFocusLeft="@id/nav_rail_view"
-
-                    android:nextFocusRight="@id/search_filter"
-                    android:paddingStart="-10dp"
-                    app:closeIcon="@drawable/ic_baseline_close_24"
-                    app:iconifiedByDefault="false"
-                    app:queryBackground="@color/transparent"
-                    app:queryHint="@string/search_hint"
-                    app:searchIcon="@drawable/search_icon"
-                    tools:ignore="RtlSymmetry">
-
-                </androidx.appcompat.widget.SearchView>
-
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
 
                 <ImageView
-                    android:id="@+id/list_selector"
+                    android:id="@+id/provider_selector"
+                    android:layout_width="25dp"
+                    android:layout_height="25dp"
+                    android:layout_gravity="end|center_vertical"
+                    android:layout_marginStart="10dp"
+                    android:background="?selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/change_providers_img_des"
+                    android:src="@drawable/ic_baseline_extension_24"
+                    app:tint="?attr/textColor" />
+
+                <ImageView
+                    android:id="@+id/library_sort"
                     android:layout_width="45dp"
                     android:layout_height="45dp"
                     android:layout_gravity="end|center_vertical"
+                    android:layout_marginStart="10dp"
                     android:background="?selectableItemBackgroundBorderless"
                     android:contentDescription="@string/change_providers_img_des"
-                    android:nextFocusLeft="@id/main_search"
-                    android:nextFocusRight="@id/main_search"
-                    android:padding="10dp"
-                    android:src="@drawable/ic_baseline_filter_list_24"
-                    app:tint="?attr/textColor" />
+                    android:padding="5dp"
+                    android:src="@drawable/ic_baseline_sort_24"
+                    android:visibility="gone"
+                    app:tint="?attr/textColor"
+                    tools:visibility="visible" />
 
-            </FrameLayout>
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:layout_margin="10dp"
+                    android:background="@drawable/search_background"
+                    android:visibility="visible">
+
+                    <androidx.appcompat.widget.SearchView
+                        android:id="@+id/main_search"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_gravity="center_vertical"
+                        android:layout_marginEnd="25dp"
+
+                        android:iconifiedByDefault="false"
+                        android:imeOptions="actionSearch"
+
+                        android:inputType="text"
+                        android:nextFocusLeft="@id/nav_rail_view"
+
+                        android:nextFocusRight="@id/search_filter"
+                        android:paddingStart="-10dp"
+                        app:closeIcon="@drawable/ic_baseline_close_24"
+                        app:iconifiedByDefault="false"
+                        app:queryBackground="@color/transparent"
+                        app:queryHint="@string/search_hint"
+                        app:searchIcon="@drawable/search_icon"
+                        tools:ignore="RtlSymmetry">
+
+                    </androidx.appcompat.widget.SearchView>
+
+
+                    <ImageView
+                        android:id="@+id/list_selector"
+                        android:layout_width="45dp"
+                        android:layout_height="45dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:background="?selectableItemBackgroundBorderless"
+                        android:contentDescription="@string/change_providers_img_des"
+                        android:nextFocusLeft="@id/main_search"
+                        android:nextFocusRight="@id/main_search"
+                        android:padding="10dp"
+                        android:src="@drawable/ic_baseline_filter_list_24"
+                        app:tint="?attr/textColor" />
+
+                </FrameLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/library_watch_holder"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <TextView
+                    android:id="@+id/library_watch_parent_item_title"
+                    style="@style/WatchHeaderText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="0dp"
+                    android:background="?android:attr/selectableItemBackground"
+                    android:contentDescription="@string/home_more_info"
+                    android:padding="12dp"
+                    android:text="@string/continue_watching"
+                    app:drawableRightCompat="@drawable/ic_baseline_arrow_forward_24"
+                    app:drawableTint="?attr/white" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/library_watch_child_recyclerview"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:clipToPadding="false"
+                    android:descendantFocusability="afterDescendants"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="5dp"
+                    app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+                    tools:listitem="@layout/home_result_grid" />
+
+            </LinearLayout>
         </LinearLayout>
 
     </com.google.android.material.appbar.AppBarLayout>

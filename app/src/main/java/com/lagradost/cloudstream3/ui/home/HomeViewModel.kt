@@ -5,6 +5,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lagradost.api.Log
 import com.lagradost.cloudstream3.APIHolder.apis
 import com.lagradost.cloudstream3.APIHolder.getApiFromNameNull
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.context
@@ -12,6 +13,7 @@ import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
 import com.lagradost.cloudstream3.CommonActivity.activity
 import com.lagradost.cloudstream3.HomePageList
+import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainActivity
@@ -39,79 +41,24 @@ import com.lagradost.cloudstream3.utils.AppContextUtils.filterProviderByPreferre
 import com.lagradost.cloudstream3.utils.AppContextUtils.filterSearchResultByFilmQuality
 import com.lagradost.cloudstream3.utils.AppContextUtils.loadResult
 import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
-import com.lagradost.cloudstream3.utils.DOWNLOAD_HEADER_CACHE
-import com.lagradost.cloudstream3.utils.DOWNLOAD_HEADER_CACHE_BACKUP
 import com.lagradost.cloudstream3.utils.DataStoreHelper
-import com.lagradost.cloudstream3.utils.DataStoreHelper.deleteAllResumeStateIds
-import com.lagradost.cloudstream3.utils.DataStoreHelper.getAllResumeStateIds
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getAllWatchStateIds
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getBookmarkedData
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount
-import com.lagradost.cloudstream3.utils.DataStoreHelper.getLastWatched
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getResultWatchState
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getViewPos
-import com.lagradost.cloudstream3.utils.downloader.DownloadObjects
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.EnumSet
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
 class HomeViewModel : ViewModel() {
     companion object {
-        suspend fun getResumeWatching(): List<DataStoreHelper.ResumeWatchingResult>? {
-            val resumeWatching = withContext(Dispatchers.IO) {
-                getAllResumeStateIds()?.mapNotNull { id ->
-                    getLastWatched(id)
-                }?.sortedBy { -it.updateTime }
-            }
-            val resumeWatchingResult = withContext(Dispatchers.IO) {
-                resumeWatching?.mapNotNull { resume ->
-                    val headerCache = getKey<DownloadObjects.DownloadHeaderCached>(
-                        DOWNLOAD_HEADER_CACHE,
-                        resume.parentId.toString()
-                    )
-
-                    val data = if (headerCache == null) {
-                        // We store resume watching data in download header cache
-                        // Because downloads automatically pruned outdated download headers we
-                        // removed resume watching data. We should restore the data for affected users.
-                        val oldData = getKey<DownloadObjects.DownloadHeaderCached>(
-                            DOWNLOAD_HEADER_CACHE_BACKUP,
-                            resume.parentId.toString()
-                        ) ?: return@mapNotNull null
-
-                        // Restore data
-                        setKey(DOWNLOAD_HEADER_CACHE, resume.parentId.toString(), oldData)
-                        oldData
-                    } else {
-                        headerCache
-                    }
-
-                    val watchPos = getViewPos(resume.episodeId)
-
-                    DataStoreHelper.ResumeWatchingResult(
-                        data.name,
-                        data.url,
-                        data.apiName,
-                        data.type,
-                        data.poster,
-                        watchPos,
-                        resume.episodeId,
-                        resume.parentId,
-                        resume.episode,
-                        resume.season,
-                        resume.isFromDownload
-                    )
-                }
-            }
-            return resumeWatchingResult
-        }
-    }
-
-    fun deleteResumeWatching() {
-        deleteAllResumeStateIds()
-        loadResumeWatching()
     }
 
     fun deleteBookmarks(list: List<SearchResponse>) {
@@ -143,26 +90,11 @@ class HomeViewModel : ViewModel() {
     private val _bookmarks = MutableLiveData<Pair<Boolean, List<SearchResponse>>>()
     val bookmarks: LiveData<Pair<Boolean, List<SearchResponse>>> = _bookmarks
 
-    private val _resumeWatching = MutableLiveData<List<SearchResponse>>()
     private val _preview = MutableLiveData<Resource<Pair<Boolean, List<LoadResponse>>>>()
     private val previewResponses = CopyOnWriteArrayList<LoadResponse>()
-    private val previewResponsesAdded = mutableSetOf<String>()
+    private val previewResponsesAdded = ConcurrentHashMap.newKeySet<String>()
 
-    val resumeWatching: LiveData<List<SearchResponse>> = _resumeWatching
     val preview: LiveData<Resource<Pair<Boolean, List<LoadResponse>>>> = _preview
-
-    private fun loadResumeWatching() = viewModelScope.launchSafe {
-        val resumeWatchingResult = getResumeWatching()
-        if (isLayout(TV) && resumeWatchingResult != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ioSafe {
-                // this WILL crash on non tvs, so keep this inside a try catch
-                activity?.addProgramsToContinueWatching(resumeWatchingResult)
-            }
-        }
-        resumeWatchingResult?.let {
-            _resumeWatching.postValue(it)
-        }
-    }
 
     fun loadStoredData(preferredWatchStatus: Set<WatchType>?) = viewModelScope.launchSafe {
         val watchStatusIds = withContext(Dispatchers.IO) {
@@ -224,12 +156,12 @@ class HomeViewModel : ViewModel() {
         var hasNext: Boolean,
     )
 
-    private val expandable: MutableMap<String, ExpandableHomepageList> = mutableMapOf()
+    private val expandable = ConcurrentHashMap<String, ExpandableHomepageList>()
     private val _page =
         MutableLiveData<Resource<Map<String, ExpandableHomepageList>>>(Resource.Loading())
     val page: LiveData<Resource<Map<String, ExpandableHomepageList>>> = _page
 
-    val lock: MutableSet<String> = mutableSetOf()
+    val lock: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     suspend fun expandAndReturn(name: String): ExpandableHomepageList? {
         if (lock.contains(name)) return null
@@ -257,8 +189,7 @@ class HomeViewModel : ViewModel() {
                                     "Expanded contained an item that was previously already in the list\n${list.name} = ${this.list.list}\n${newList.name} = ${newList.list}"
                                 }
 
-                                this.list.list += newList.list
-                                this.list.list.distinctBy { it.url } // just to be sure we are not adding the same shit for some reason
+                                this.list.list = (this.list.list + newList.list).distinctBy { it.url }
                             } ?: debugWarning {
                                 "Expanded an item not in main load named $key, current list is ${expandable.keys}"
                             }
@@ -294,7 +225,7 @@ class HomeViewModel : ViewModel() {
         for (searchResponse in shuffledList) {
             if (!alreadyAdded.contains(searchResponse.url)) {
                 addItems.add(searchResponse)
-                previewResponsesAdded.add(searchResponse.url)
+                alreadyAdded.add(searchResponse.url)
                 if (++count >= size) {
                     break
                 }
@@ -317,100 +248,161 @@ class HomeViewModel : ViewModel() {
     }
 
     private fun load(api: MainAPI): Job = ioSafe {
-        repo = //if (api != null) {
-            APIRepository(api)
-        //} else {
-        //    autoloadRepo()
-        //}
+        val totalStart = System.currentTimeMillis()
 
-        _apiName.postValue(repo?.name)
+        repo = APIRepository(api)
+        val currentRepo = this@HomeViewModel.repo ?: return@ioSafe
+
+        _apiName.postValue(currentRepo.name)
         _randomItems.postValue(listOf())
 
-        if (repo?.hasMainPage != true) {
+        if (currentRepo.hasMainPage != true) {
             _page.postValue(Resource.Success(emptyMap()))
             _preview.postValue(Resource.Failure(false, "No homepage"))
             return@ioSafe
         }
-
 
         _page.postValue(Resource.Loading())
         _preview.postValue(Resource.Loading())
         // cancel the current preview expand as that is no longer relevant
         addJob?.cancel()
 
-        when (val data = repo?.getMainPage(1, null)) {
-            is Resource.Success -> {
-                try {
-                    expandable.clear()
-                    data.value.forEach { home ->
-                        home?.items?.forEach { list ->
-                            val filteredList =
-                                context?.filterHomePageListByFilmQuality(list) ?: list
-                            expandable[list.name] =
-                                ExpandableHomepageList(
-                                    filteredList.copy(
-                                        list = CopyOnWriteArrayList(
-                                            filteredList.list
-                                        )
-                                    ), 1, home.hasNext
-                                )
+        expandable.clear()
+        previewResponses.clear()
+        previewResponsesAdded.clear()
+
+        val mainPageData = currentRepo.mainPage
+        val homeResults = arrayOfNulls<List<ExpandableHomepageList>>(mainPageData.size)
+        val allItems = mutableListOf<SearchResponse>()
+        var previewJob: Job? = null
+        val syncLock = Any()
+        var lastFailure: Resource.Failure? = null
+
+        fun processHomeResponse(res: Resource<List<HomePageResponse?>>, index: Int) {
+            when (res) {
+                is Resource.Success -> {
+                    val newItems = mutableListOf<SearchResponse>()
+                    val currentResults = mutableListOf<ExpandableHomepageList>()
+                    res.value.filterNotNull().forEach { home ->
+                        home.items.forEach { list ->
+                            val filteredList = context?.filterHomePageListByFilmQuality(list) ?: list
+                            val expandableList = ExpandableHomepageList(filteredList, 1, home.hasNext)
+                            expandable[list.name] = expandableList
+                            newItems.addAll(filteredList.list)
+                            currentResults.add(expandableList)
                         }
                     }
 
-                    val items = data.value.mapNotNull { it?.items }.flatten()
+                    synchronized(syncLock) {
+                        homeResults[index] = currentResults
 
+                        // Build ordered map for UI to prevent reshuffling
+                        val orderedMap = LinkedHashMap<String, ExpandableHomepageList>()
+                        homeResults.forEach { list ->
+                            list?.forEach { item ->
+                                orderedMap[item.list.name] = item
+                            }
+                        }
+                        _page.postValue(Resource.Success(orderedMap))
 
-                    previewResponses.clear()
-                    previewResponsesAdded.clear()
-
-                    //val home = data.value
-                    if (items.isNotEmpty()) {
-                        val currentList =
-                            items.shuffled().filter { it.list.isNotEmpty() }
-                                .flatMap { it.list }
-                                .distinctBy { it.url }.toList()
-
-                        if (currentList.isNotEmpty()) {
+                        allItems.addAll(newItems)
+                        if (previewJob == null && allItems.isNotEmpty()) {
+                            val distinctItems = allItems.distinctBy { it.url }
+                            val shuffledList = distinctItems.shuffled()
                             val randomItems =
-                                context?.filterSearchResultByFilmQuality(currentList.shuffled())
-                                    ?: currentList.shuffled()
-
-                            updatePreviewResponses(
-                                previewResponses,
-                                previewResponsesAdded,
-                                randomItems,
-                                3
-                            )
-
-                            _randomItems.postValue(randomItems)
+                                context?.filterSearchResultByFilmQuality(shuffledList)
+                                    ?: shuffledList
                             currentShuffledList = randomItems
+                            _randomItems.postValue(randomItems)
+
+                            previewJob = viewModelScope.launchSafe {
+                                val previewStart = System.currentTimeMillis()
+                                // 1. Load the first item ASAP for instant feedback
+                                if (updatePreviewResponses(
+                                        previewResponses,
+                                        previewResponsesAdded,
+                                        currentShuffledList,
+                                        1
+                                    ) > 0
+                                ) {
+                                    _preview.postValue(
+                                        Resource.Success(
+                                            (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                        )
+                                    )
+                                }
+
+                                // 2. Load 2 more items to have a decent buffer
+                                if (updatePreviewResponses(
+                                        previewResponses,
+                                        previewResponsesAdded,
+                                        currentShuffledList,
+                                        2
+                                    ) > 0
+                                ) {
+                                    _preview.postValue(
+                                        Resource.Success(
+                                            (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                        )
+                                    )
+                                }
+                            }
                         }
                     }
-                    if (previewResponses.isEmpty()) {
-                        _preview.postValue(
-                            Resource.Failure(
-                                false,
-                                "No homepage responses"
-                            )
-                        )
-                    } else {
-                        _preview.postValue(Resource.Success((previewResponsesAdded.size < currentShuffledList.size) to previewResponses))
+                }
+                is Resource.Failure -> {
+                    synchronized(syncLock) {
+                        lastFailure = res
                     }
-                    _page.postValue(Resource.Success(expandable))
-                } catch (e: Exception) {
-                    _randomItems.postValue(emptyList())
-                    logError(e)
+                }
+                else -> Unit
+            }
+        }
+
+        try {
+            val firstBatchSize = 4
+            if (api.sequentialMainPage) {
+                for (index in 0 until mainPageData.size) {
+                    if (index > 0) delay(api.sequentialMainPageDelay)
+                    val res = currentRepo.getMainPage(1, index)
+                    processHomeResponse(res, index)
+                }
+            } else {
+                // Prioritize the first batch to show content on screen ASAP
+                coroutineScope {
+                    for (index in 0 until minOf(firstBatchSize, mainPageData.size)) {
+                        launch {
+                            val res = currentRepo.getMainPage(1, index)
+                            processHomeResponse(res, index)
+                        }
+                    }
+                }
+
+                // Load the rest in the background
+                for (index in firstBatchSize until mainPageData.size) {
+                    launch {
+                        val res = currentRepo.getMainPage(1, index)
+                        processHomeResponse(res, index)
+                    }
                 }
             }
 
-            is Resource.Failure -> {
-                @Suppress("UNNECESSARY_NOT_NULL_ASSERTION")
-                _page.postValue(data!!)
-                @Suppress("UNNECESSARY_NOT_NULL_ASSERTION")
-                _preview.postValue(data!!)
+            // If we have absolutely nothing after all attempts
+            if (expandable.isEmpty()) {
+                val failure = synchronized(syncLock) { lastFailure }
+                if (failure != null) {
+                    _page.postValue(failure)
+                    _preview.postValue(failure)
+                } else {
+                    _page.postValue(Resource.Success(emptyMap()))
+                    _preview.postValue(Resource.Failure(false, "No homepage responses"))
+                }
             }
-
-            else -> Unit
+        } catch (e: Exception) {
+            logError(e)
+            if (expandable.isEmpty()) {
+                _page.postValue(Resource.Failure(false, e.message ?: "Error loading homepage"))
+            }
         }
         isCurrentlyLoadingName = null
     }
@@ -489,7 +481,6 @@ class HomeViewModel : ViewModel() {
     }
 
     fun reloadStored() {
-        loadResumeWatching()
         loadStoredData()
     }
 

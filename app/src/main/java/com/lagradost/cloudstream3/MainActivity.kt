@@ -374,7 +374,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                                 ?: return false
                         ioSafe {
                             val resumeWatchingCard =
-                                HomeViewModel.getResumeWatching()?.firstOrNull { it.id == id }
+                                LibraryViewModel.getResumeWatching()?.firstOrNull { it.id == id }
                                     ?: return@ioSafe
                             activity.loadSearchResult(
                                 resumeWatchingCard,
