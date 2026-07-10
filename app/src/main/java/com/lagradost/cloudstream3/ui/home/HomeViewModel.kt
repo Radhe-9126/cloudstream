@@ -416,7 +416,7 @@ class HomeViewModel : ViewModel() {
                                 previewResponses,
                                 previewResponsesAdded,
                                 currentShuffledList,
-                                3
+                                1
                             )
 
                             Log.i(
