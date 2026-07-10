@@ -5,6 +5,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lagradost.api.Log
 import com.lagradost.cloudstream3.APIHolder.apis
 import com.lagradost.cloudstream3.APIHolder.getApiFromNameNull
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.context
@@ -59,6 +60,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class HomeViewModel : ViewModel() {
     companion object {
+        private const val PERF_TAG = "CS_PERF"
         suspend fun getResumeWatching(): List<DataStoreHelper.ResumeWatchingResult>? {
             val resumeWatching = withContext(Dispatchers.IO) {
                 getAllResumeStateIds()?.mapNotNull { id ->
@@ -317,6 +319,12 @@ class HomeViewModel : ViewModel() {
     }
 
     private fun load(api: MainAPI): Job = ioSafe {
+        val totalStart = System.currentTimeMillis()
+
+        Log.i(
+            PERF_TAG,
+            "Loading homepage for provider: ${api.name}"
+        )
         repo = //if (api != null) {
             APIRepository(api)
         //} else {
@@ -338,8 +346,18 @@ class HomeViewModel : ViewModel() {
         // cancel the current preview expand as that is no longer relevant
         addJob?.cancel()
 
-        when (val data = repo?.getMainPage(1, null)) {
+        val fetchStart = System.currentTimeMillis()
+
+        val data = repo?.getMainPage(1, null)
+
+        Log.i(
+            PERF_TAG,
+            "getMainPage() completed in ${System.currentTimeMillis() - fetchStart} ms"
+        )
+
+        when (data) {
             is Resource.Success -> {
+                val processStart = System.currentTimeMillis()
                 try {
                     expandable.clear()
                     data.value.forEach { home ->
@@ -366,37 +384,63 @@ class HomeViewModel : ViewModel() {
                     //val home = data.value
                     if (items.isNotEmpty()) {
                         val currentList =
-                            items.shuffled().filter { it.list.isNotEmpty() }
+                            items.shuffled()
+                                .filter { it.list.isNotEmpty() }
                                 .flatMap { it.list }
-                                .distinctBy { it.url }.toList()
+                                .distinctBy { it.url }
 
                         if (currentList.isNotEmpty()) {
                             val randomItems =
                                 context?.filterSearchResultByFilmQuality(currentList.shuffled())
                                     ?: currentList.shuffled()
 
-                            updatePreviewResponses(
-                                previewResponses,
-                                previewResponsesAdded,
-                                randomItems,
-                                3
-                            )
-
                             _randomItems.postValue(randomItems)
                             currentShuffledList = randomItems
                         }
                     }
-                    if (previewResponses.isEmpty()) {
-                        _preview.postValue(
-                            Resource.Failure(
-                                false,
-                                "No homepage responses"
-                            )
-                        )
-                    } else {
-                        _preview.postValue(Resource.Success((previewResponsesAdded.size < currentShuffledList.size) to previewResponses))
-                    }
+
+// ⭐ Show homepage immediately
                     _page.postValue(Resource.Success(expandable))
+
+// ⭐ Generate previews in background
+                    viewModelScope.launchSafe {
+
+                        previewResponses.clear()
+                        previewResponsesAdded.clear()
+
+                        if (currentShuffledList.isNotEmpty()) {
+
+                            val previewStart = System.currentTimeMillis()
+
+                            updatePreviewResponses(
+                                previewResponses,
+                                previewResponsesAdded,
+                                currentShuffledList,
+                                3
+                            )
+
+                            Log.i(
+                                PERF_TAG,
+                                "Background preview = ${
+                                    System.currentTimeMillis() - previewStart
+                                } ms"
+                            )
+
+                            _preview.postValue(
+                                Resource.Success(
+                                    (previewResponsesAdded.size < currentShuffledList.size)
+                                            to previewResponses
+                                )
+                            )
+                        } else {
+                            _preview.postValue(
+                                Resource.Failure(
+                                    false,
+                                    "No homepage responses"
+                                )
+                            )
+                        }
+                    }
                 } catch (e: Exception) {
                     _randomItems.postValue(emptyList())
                     logError(e)
@@ -412,6 +456,10 @@ class HomeViewModel : ViewModel() {
 
             else -> Unit
         }
+        Log.i(
+            PERF_TAG,
+            "TOTAL homepage load = ${System.currentTimeMillis() - totalStart} ms"
+        )
         isCurrentlyLoadingName = null
     }
 
