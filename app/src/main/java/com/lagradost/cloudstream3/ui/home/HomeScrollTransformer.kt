@@ -5,19 +5,19 @@ import androidx.viewpager2.widget.ViewPager2
 
 class HomeScrollTransformer : ViewPager2.PageTransformer {
     override fun transformPage(page: View, position: Float) {
-        //page.translationX = -position * page.width / 2.0f
+        val absPos = Math.abs(position)
 
-        //val params = RecyclerView.LayoutParams(
-        //    RecyclerView.LayoutParams.MATCH_PARENT,
-        //    0
-        //)
-        //page.layoutParams = params
-        //progressBar?.layoutParams = params
+        // Parallax effect using translationX instead of padding for better performance
+        page.translationX = -position * page.width / 2f
 
-        val padding = (-position * page.width / 2).toInt()
-        page.setPadding(
-            padding, 0,
-            -padding, 0
-        )
+        // Slight scale and alpha effect for "Netflix" feel
+        if (absPos <= 1) {
+            val scaleFactor = 0.9f + (1 - absPos) * 0.1f
+            page.scaleX = scaleFactor
+            page.scaleY = scaleFactor
+            page.alpha = 0.5f + (1 - absPos) * 0.5f
+        } else {
+            page.alpha = 0f
+        }
     }
 }

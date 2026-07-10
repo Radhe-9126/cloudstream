@@ -41,8 +41,19 @@ import com.lagradost.cloudstream3.ui.AutofitRecyclerView
 import com.lagradost.cloudstream3.ui.quicksearch.QuickSearchFragment
 import com.lagradost.cloudstream3.utils.txt
 import com.lagradost.cloudstream3.ui.BaseFragment
+import com.lagradost.cloudstream3.ui.result.START_ACTION_RESUME_LATEST
+import com.lagradost.cloudstream3.ui.search.SearchClickCallback
 import com.lagradost.cloudstream3.ui.search.SEARCH_ACTION_LOAD
 import com.lagradost.cloudstream3.ui.search.SEARCH_ACTION_SHOW_METADATA
+import com.lagradost.cloudstream3.ui.search.SearchHelper.handleSearchClickCallback
+import androidx.appcompat.app.AlertDialog
+import com.lagradost.cloudstream3.utils.AppContextUtils.setDefaultFocus
+import com.lagradost.cloudstream3.ui.WatchType
+import com.lagradost.cloudstream3.utils.SingleSelectionHelper.showOptionSelectStringRes
+import com.lagradost.cloudstream3.CloudStreamApp.Companion.getActivity
+import com.lagradost.cloudstream3.ui.home.HomeFragment.Companion.loadHomepageList
+import com.lagradost.cloudstream3.ui.home.HomeViewModel
+import com.lagradost.cloudstream3.utils.DataStoreHelper
 import com.lagradost.cloudstream3.ui.settings.Globals.PHONE
 import com.lagradost.cloudstream3.ui.settings.Globals.isLandscape
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
@@ -278,6 +289,109 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
         }
 
         binding.viewpager.setPageTransformer(LibraryScrollTransformer())
+
+        val resumeAdapter = ResumeItemAdapter(
+            nextFocusUp = R.id.main_search,
+            nextFocusDown = R.id.library_tab_layout,
+            removeCallback = { v ->
+                try {
+                    val context = v.context ?: return@ResumeItemAdapter
+                    val builder: AlertDialog.Builder =
+                        AlertDialog.Builder(context)
+                    builder.apply {
+                        setTitle(R.string.clear_history)
+                        setMessage(
+                            context.getString(R.string.delete_message).format(
+                                context.getString(
+                                    R.string.continue_watching
+                                )
+                            )
+                        )
+                        setNegativeButton(R.string.cancel) { _, _ -> /*NO-OP*/ }
+                        setPositiveButton(R.string.delete) { _, _ ->
+                            libraryViewModel.deleteResumeWatching()
+                        }
+                        show().setDefaultFocus()
+                    }
+                } catch (t: Throwable) {
+                    com.lagradost.cloudstream3.mvvm.logError(t)
+                }
+            },
+            clickCallback = { callback ->
+                if (callback.action != SEARCH_ACTION_SHOW_METADATA) {
+                    handleSearchClickCallback(callback)
+                    return@ResumeItemAdapter
+                }
+                callback.view.context?.getActivity()?.showOptionSelectStringRes(
+                    callback.view,
+                    callback.card.posterUrl,
+                    listOf(
+                        R.string.action_open_watching,
+                        R.string.action_remove_watching
+                    ),
+                    listOf(
+                        R.string.action_open_play,
+                        R.string.action_open_watching,
+                        R.string.action_remove_watching
+                    )
+                ) { (isTv, actionId) ->
+                    when (actionId + if (isTv) 0 else 1) {
+                        // play
+                        0 -> {
+                            handleSearchClickCallback(
+                                SearchClickCallback(
+                                    START_ACTION_RESUME_LATEST,
+                                    callback.view,
+                                    -1,
+                                    callback.card
+                                )
+                            )
+                        }
+                        //info
+                        1 -> {
+                            handleSearchClickCallback(
+                                SearchClickCallback(
+                                    SEARCH_ACTION_LOAD,
+                                    callback.view,
+                                    -1,
+                                    callback.card
+                                )
+                            )
+                        }
+                        // remove
+                        2 -> {
+                            val card = callback.card
+                            if (card is DataStoreHelper.ResumeWatchingResult) {
+                                DataStoreHelper.removeLastWatched(card.parentId)
+                                libraryViewModel.reloadStored()
+                            }
+                        }
+                    }
+                }
+            })
+
+        binding.libraryWatchChildRecyclerview.adapter = resumeAdapter
+
+        observe(libraryViewModel.resumeWatching) { resumeWatching ->
+            binding.libraryWatchHolder.isVisible = resumeWatching.isNotEmpty()
+            resumeAdapter.submitList(resumeWatching)
+
+            binding.libraryWatchParentItemTitle.setOnClickListener {
+                (activity as? MainActivity)?.loadHomepageList(
+                    HomeViewModel.ExpandableHomepageList(
+                        com.lagradost.cloudstream3.HomePageList(
+                            binding.libraryWatchParentItemTitle.text.toString(),
+                            resumeWatching,
+                            false
+                        ), 1, false
+                    ),
+                    deleteCallback = {
+                        libraryViewModel.deleteResumeWatching()
+                    },
+                    dismissCallback = {}
+                )
+            }
+        }
 
         binding.viewpager.adapter = ViewpagerAdapter(
             { isScrollingDown: Boolean ->

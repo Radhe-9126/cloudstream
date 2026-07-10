@@ -16,7 +16,7 @@
     <FrameLayout
         android:id="@+id/home_preview_viewpager_text"
         android:layout_width="match_parent"
-        android:layout_height="500dp">
+        android:layout_height="440dp">
 
         <androidx.viewpager2.widget.ViewPager2
             android:id="@+id/home_preview_viewpager"
@@ -108,21 +108,21 @@
         <LinearLayout
             android:id="@+id/home_preview_title_holder"
             android:layout_width="match_parent"
-            android:layout_height="100dp"
+            android:layout_height="70dp"
             android:layout_gravity="bottom"
             android:gravity="center"
             android:orientation="horizontal">
 
             <TextView
                 android:id="@+id/home_preview_bookmark"
-                android:layout_width="70dp"
+                android:layout_width="0dp"
+                android:layout_weight="1"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
-                android:layout_marginStart="25dp"
-                android:layout_marginEnd="25dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:gravity="center"
                 android:text="@string/none"
+                android:textSize="12sp"
                 android:textColor="?attr/white"
                 app:drawableTint="?attr/white"
                 app:drawableTopCompat="@drawable/ic_baseline_add_24"
@@ -131,21 +131,27 @@
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/home_preview_play"
                 style="@style/WhiteButton"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
+                android:layout_weight="1.5"
+                android:layout_height="wrap_content"
                 android:layout_gravity="center"
+                android:layout_marginHorizontal="10dp"
                 android:text="@string/home_play"
+                android:textColor="@color/black"
+                app:backgroundTint="@color/white"
+                app:iconTint="@color/black"
                 app:icon="@drawable/ic_baseline_play_arrow_24" />
 
             <TextView
                 android:id="@+id/home_preview_info"
-                android:layout_width="70dp"
+                android:layout_width="0dp"
+                android:layout_weight="1"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
-                android:layout_marginStart="25dp"
-                android:layout_marginEnd="25dp"
                 android:background="?android:attr/selectableItemBackgroundBorderless"
                 android:gravity="center"
                 android:text="@string/home_info"
+                android:textSize="12sp"
                 android:textColor="?attr/white"
                 app:drawableTint="?attr/white"
                 app:drawableTopCompat="@drawable/ic_outline_info_24"
@@ -197,40 +203,6 @@
 
 
     <LinearLayout
-        android:id="@+id/home_watch_holder"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:visibility="gone"
-        tools:visibility="visible">
-
-        <TextView
-            android:id="@+id/home_watch_parent_item_title"
-            style="@style/WatchHeaderText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="0dp"
-            android:background="?android:attr/selectableItemBackground"
-            android:contentDescription="@string/home_more_info"
-            android:padding="12dp"
-            android:text="@string/continue_watching"
-            app:drawableRightCompat="@drawable/ic_baseline_arrow_forward_24"
-            app:drawableTint="?attr/white" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/home_watch_child_recyclerview"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:clipToPadding="false"
-            android:descendantFocusability="afterDescendants"
-            android:orientation="horizontal"
-            android:paddingHorizontal="5dp"
-            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-            tools:listitem="@layout/home_result_grid" />
-
-    </LinearLayout>
-
-    <LinearLayout
         android:id="@+id/home_bookmarked_holder"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -252,7 +224,7 @@
                 android:fadingEdge="horizontal"
 
                 android:nextFocusLeft="@id/nav_rail_view"
-                android:nextFocusUp="@id/home_watch_child_recyclerview"
+                android:nextFocusUp="@id/home_preview_play"
                 android:nextFocusForward="@id/home_bookmarked_child_recyclerview"
                 android:paddingStart="12dp"
                 android:paddingTop="5dp"
