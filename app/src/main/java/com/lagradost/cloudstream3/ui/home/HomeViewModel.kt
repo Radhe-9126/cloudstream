@@ -61,53 +61,49 @@ import java.util.concurrent.CopyOnWriteArrayList
 class HomeViewModel : ViewModel() {
     companion object {
         private const val PERF_TAG = "CS_PERF"
-        suspend fun getResumeWatching(): List<DataStoreHelper.ResumeWatchingResult>? {
-            val resumeWatching = withContext(Dispatchers.IO) {
-                getAllResumeStateIds()?.mapNotNull { id ->
-                    getLastWatched(id)
-                }?.sortedBy { -it.updateTime }
-            }
-            val resumeWatchingResult = withContext(Dispatchers.IO) {
-                resumeWatching?.mapNotNull { resume ->
-                    val headerCache = getKey<DownloadObjects.DownloadHeaderCached>(
-                        DOWNLOAD_HEADER_CACHE,
+        suspend fun getResumeWatching(): List<DataStoreHelper.ResumeWatchingResult>? = withContext(Dispatchers.IO) {
+            val resumeWatchingIds = getAllResumeStateIds() ?: return@withContext null
+            
+            resumeWatchingIds.mapNotNull { id ->
+                getLastWatched(id)
+            }.sortedByDescending { it.updateTime }.mapNotNull { resume ->
+                val headerCache = getKey<DownloadObjects.DownloadHeaderCached>(
+                    DOWNLOAD_HEADER_CACHE,
+                    resume.parentId.toString()
+                )
+
+                val data = if (headerCache == null) {
+                    // We store resume watching data in download header cache
+                    // Because downloads automatically pruned outdated download headers we
+                    // removed resume watching data. We should restore the data for affected users.
+                    val oldData = getKey<DownloadObjects.DownloadHeaderCached>(
+                        DOWNLOAD_HEADER_CACHE_BACKUP,
                         resume.parentId.toString()
-                    )
+                    ) ?: return@mapNotNull null
 
-                    val data = if (headerCache == null) {
-                        // We store resume watching data in download header cache
-                        // Because downloads automatically pruned outdated download headers we
-                        // removed resume watching data. We should restore the data for affected users.
-                        val oldData = getKey<DownloadObjects.DownloadHeaderCached>(
-                            DOWNLOAD_HEADER_CACHE_BACKUP,
-                            resume.parentId.toString()
-                        ) ?: return@mapNotNull null
-
-                        // Restore data
-                        setKey(DOWNLOAD_HEADER_CACHE, resume.parentId.toString(), oldData)
-                        oldData
-                    } else {
-                        headerCache
-                    }
-
-                    val watchPos = getViewPos(resume.episodeId)
-
-                    DataStoreHelper.ResumeWatchingResult(
-                        data.name,
-                        data.url,
-                        data.apiName,
-                        data.type,
-                        data.poster,
-                        watchPos,
-                        resume.episodeId,
-                        resume.parentId,
-                        resume.episode,
-                        resume.season,
-                        resume.isFromDownload
-                    )
+                    // Restore data
+                    setKey(DOWNLOAD_HEADER_CACHE, resume.parentId.toString(), oldData)
+                    oldData
+                } else {
+                    headerCache
                 }
+
+                val watchPos = getViewPos(resume.episodeId)
+
+                DataStoreHelper.ResumeWatchingResult(
+                    data.name,
+                    data.url,
+                    data.apiName,
+                    data.type,
+                    data.poster,
+                    watchPos,
+                    resume.episodeId,
+                    resume.parentId,
+                    resume.episode,
+                    resume.season,
+                    resume.isFromDownload
+                )
             }
-            return resumeWatchingResult
         }
     }
 
@@ -259,8 +255,7 @@ class HomeViewModel : ViewModel() {
                                     "Expanded contained an item that was previously already in the list\n${list.name} = ${this.list.list}\n${newList.name} = ${newList.list}"
                                 }
 
-                                this.list.list += newList.list
-                                this.list.list.distinctBy { it.url } // just to be sure we are not adding the same shit for some reason
+                                this.list.list = (this.list.list + newList.list).distinctBy { it.url }
                             } ?: debugWarning {
                                 "Expanded an item not in main load named $key, current list is ${expandable.keys}"
                             }
@@ -359,21 +354,20 @@ class HomeViewModel : ViewModel() {
             is Resource.Success -> {
                 val processStart = System.currentTimeMillis()
                 try {
-                    expandable.clear()
+                    val newExpandable = mutableMapOf<String, ExpandableHomepageList>()
                     data.value.forEach { home ->
                         home?.items?.forEach { list ->
                             val filteredList =
                                 context?.filterHomePageListByFilmQuality(list) ?: list
-                            expandable[list.name] =
+                            newExpandable[list.name] =
                                 ExpandableHomepageList(
-                                    filteredList.copy(
-                                        list = CopyOnWriteArrayList(
-                                            filteredList.list
-                                        )
-                                    ), 1, home.hasNext
+                                    filteredList, 1, home.hasNext
                                 )
                         }
                     }
+
+                    expandable.clear()
+                    expandable.putAll(newExpandable)
 
                     val items = data.value.mapNotNull { it?.items }.flatten()
 
@@ -384,15 +378,14 @@ class HomeViewModel : ViewModel() {
                     //val home = data.value
                     if (items.isNotEmpty()) {
                         val currentList =
-                            items.shuffled()
-                                .filter { it.list.isNotEmpty() }
-                                .flatMap { it.list }
+                            items.flatMap { it.list }
                                 .distinctBy { it.url }
 
                         if (currentList.isNotEmpty()) {
+                            val shuffledList = currentList.shuffled()
                             val randomItems =
-                                context?.filterSearchResultByFilmQuality(currentList.shuffled())
-                                    ?: currentList.shuffled()
+                                context?.filterSearchResultByFilmQuality(shuffledList)
+                                    ?: shuffledList
 
                             _randomItems.postValue(randomItems)
                             currentShuffledList = randomItems
@@ -400,7 +393,7 @@ class HomeViewModel : ViewModel() {
                     }
 
 // ⭐ Show homepage immediately
-                    _page.postValue(Resource.Success(expandable))
+                    _page.postValue(Resource.Success(newExpandable))
 
 // ⭐ Generate previews in background
                     viewModelScope.launchSafe {

@@ -747,11 +747,7 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
                 when (data) {
                     is Resource.Success -> {
                         val d = data.value
-                        (homeMasterRecycler.adapter as? ParentItemAdapter)?.submitList(d.values.map {
-                            it.copy(
-                                list = it.list.copy(list = it.list.list.toMutableList())
-                            )
-                        })
+                        (homeMasterRecycler.adapter as? ParentItemAdapter)?.submitList(d.values.toList())
 
                         saveHomepageToTV(d)
 
