@@ -226,7 +226,7 @@ class HomeViewModel : ViewModel() {
         for (searchResponse in shuffledList) {
             if (!alreadyAdded.contains(searchResponse.url)) {
                 addItems.add(searchResponse)
-                previewResponsesAdded.add(searchResponse.url)
+                alreadyAdded.add(searchResponse.url)
                 if (++count >= size) {
                     break
                 }
@@ -314,23 +314,46 @@ class HomeViewModel : ViewModel() {
                         if (previewJob == null && allItems.isNotEmpty()) {
                             val distinctItems = allItems.distinctBy { it.url }
                             val shuffledList = distinctItems.shuffled()
-                            val randomItems = context?.filterSearchResultByFilmQuality(shuffledList) ?: shuffledList
+                            val randomItems =
+                                context?.filterSearchResultByFilmQuality(shuffledList)
+                                    ?: shuffledList
                             currentShuffledList = randomItems
                             _randomItems.postValue(randomItems)
 
                             previewJob = viewModelScope.launchSafe {
                                 val previewStart = System.currentTimeMillis()
-                                updatePreviewResponses(
-                                    previewResponses,
-                                    previewResponsesAdded,
-                                    currentShuffledList,
-                                    2 // Load 2 items for smoother initial experience
-                                )
-                                Log.i(PERF_TAG, "Background preview = ${System.currentTimeMillis() - previewStart} ms")
-                                _preview.postValue(
-                                    Resource.Success(
-                                        (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                // 1. Load the first item ASAP for instant feedback
+                                if (updatePreviewResponses(
+                                        previewResponses,
+                                        previewResponsesAdded,
+                                        currentShuffledList,
+                                        1
+                                    ) > 0
+                                ) {
+                                    _preview.postValue(
+                                        Resource.Success(
+                                            (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                        )
                                     )
+                                }
+
+                                // 2. Load 2 more items to have a decent buffer
+                                if (updatePreviewResponses(
+                                        previewResponses,
+                                        previewResponsesAdded,
+                                        currentShuffledList,
+                                        2
+                                    ) > 0
+                                ) {
+                                    _preview.postValue(
+                                        Resource.Success(
+                                            (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                        )
+                                    )
+                                }
+                                Log.i(
+                                    PERF_TAG,
+                                    "Background preview initial load = ${System.currentTimeMillis() - previewStart} ms"
                                 )
                             }
                         }

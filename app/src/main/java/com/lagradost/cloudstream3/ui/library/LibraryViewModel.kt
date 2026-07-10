@@ -177,13 +177,19 @@ class LibraryViewModel : ViewModel() {
         }
     }
 
+    private fun bookmarksUpdated(unused: Boolean) {
+        reloadStored()
+    }
+
     init {
         MainActivity.reloadLibraryEvent += ::reloadPages
+        MainActivity.bookmarksUpdatedEvent += ::bookmarksUpdated
         reloadStored()
     }
 
     override fun onCleared() {
         MainActivity.reloadLibraryEvent -= ::reloadPages
+        MainActivity.bookmarksUpdatedEvent -= ::bookmarksUpdated
         super.onCleared()
     }
 

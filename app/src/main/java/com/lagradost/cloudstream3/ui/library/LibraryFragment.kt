@@ -189,6 +189,7 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
         })
 
         libraryViewModel.reloadPages(false)
+        libraryViewModel.reloadStored()
 
         binding.listSelector.setOnClickListener {
             val items = libraryViewModel.availableApiNames
@@ -374,7 +375,10 @@ class LibraryFragment : BaseFragment<FragmentLibraryBinding>(
 
         observe(libraryViewModel.resumeWatching) { resumeWatching ->
             binding.libraryWatchHolder.isVisible = resumeWatching.isNotEmpty()
-            resumeAdapter.submitList(resumeWatching)
+            resumeAdapter.submitList(resumeWatching) {
+                // Scroll to the start when the list updates to show the latest watched item
+                binding.libraryWatchChildRecyclerview.scrollToPosition(0)
+            }
 
             binding.libraryWatchParentItemTitle.setOnClickListener {
                 (activity as? MainActivity)?.loadHomepageList(
