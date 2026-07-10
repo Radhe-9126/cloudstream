@@ -164,10 +164,6 @@ class APIRepository(val api: MainAPI) {
 
                 api.lastHomepageRequest = unixTimeMS
 
-                Log.i(
-                    "CS_SECTION",
-                    "${api.name} | sequential = ${api.sequentialMainPage}"
-                )
 
                 nameIndex?.let { api.mainPage.getOrNull(it) }?.let { data ->
 
@@ -180,13 +176,6 @@ class APIRepository(val api: MainAPI) {
                             data.data,
                             data.horizontalImages
                         )
-                    )
-
-                    Log.i(
-                        "CS_SECTION",
-                        "[${api.name}] ${data.name.padEnd(20)} ${
-                            System.currentTimeMillis() - start
-                        } ms"
                     )
 
                     listOf(result)
@@ -215,13 +204,6 @@ class APIRepository(val api: MainAPI) {
                                 )
                             )
 
-                            Log.i(
-                                "CS_SECTION",
-                                "${api.name} -> ${data.name} = ${
-                                    System.currentTimeMillis() - start
-                                } ms"
-                            )
-
                             result
                         }
 
@@ -242,13 +224,6 @@ class APIRepository(val api: MainAPI) {
                                             data.data,
                                             data.horizontalImages
                                         )
-                                    )
-
-                                    Log.i(
-                                        "CS_SECTION",
-                                        "${api.name} -> ${data.name} = ${
-                                            System.currentTimeMillis() - start
-                                        } ms"
                                     )
 
                                     result

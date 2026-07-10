@@ -59,7 +59,6 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 class HomeViewModel : ViewModel() {
     companion object {
-        private const val PERF_TAG = "CS_PERF"
     }
 
     fun deleteBookmarks(list: List<SearchResponse>) {
@@ -251,10 +250,6 @@ class HomeViewModel : ViewModel() {
     private fun load(api: MainAPI): Job = ioSafe {
         val totalStart = System.currentTimeMillis()
 
-        Log.i(
-            PERF_TAG,
-            "Loading homepage for provider: ${api.name}"
-        )
         repo = APIRepository(api)
         val currentRepo = this@HomeViewModel.repo ?: return@ioSafe
 
@@ -351,10 +346,6 @@ class HomeViewModel : ViewModel() {
                                         )
                                     )
                                 }
-                                Log.i(
-                                    PERF_TAG,
-                                    "Background preview initial load = ${System.currentTimeMillis() - previewStart} ms"
-                                )
                             }
                         }
                     }
@@ -413,11 +404,6 @@ class HomeViewModel : ViewModel() {
                 _page.postValue(Resource.Failure(false, e.message ?: "Error loading homepage"))
             }
         }
-
-        Log.i(
-            PERF_TAG,
-            "TOTAL homepage load trigger finished in ${System.currentTimeMillis() - totalStart} ms"
-        )
         isCurrentlyLoadingName = null
     }
 
