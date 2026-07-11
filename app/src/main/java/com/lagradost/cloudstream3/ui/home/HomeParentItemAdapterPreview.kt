@@ -596,6 +596,9 @@ class HomeParentItemAdapterPreview(
                         bannerShimmer?.isVisible = true
                         previewViewpager.isInvisible = true
                         
+                        // FIX: Hide alternative account padding during loading to prevent uplift
+                        alternativeAccountPadding?.isVisible = false
+                        
                         // Keep buttons visible but disabled to preserve layout and prevent flicker
                         bannerButtons?.isVisible = true
                         bannerPlay?.isEnabled = false

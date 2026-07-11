@@ -331,6 +331,14 @@ class HomeViewModel : ViewModel() {
 
         // Pre-fill from cache or create skeleton placeholders for at least 3 sections
         if (mainPageData.isNotEmpty()) {
+            // Clear generic skeletons from expandable if we have structural info from mainPageData
+            val hasRealData = expandable.values.any { row ->
+                row.list.list.any { !it.url.startsWith("loading://") }
+            }
+            if (!hasRealData) {
+                expandable.clear()
+            }
+
             mainPageData.forEachIndexed { index, pageData ->
                 val cached = expandable[pageData.name]
                 if (cached != null) {
@@ -340,6 +348,7 @@ class HomeViewModel : ViewModel() {
                     val skeletons = List(6) { i -> LoadingSearchResponse(url = "loading://${pageData.name}/$i") }
                     val skeleton = ExpandableHomepageList(HomePageList(pageData.name, skeletons, pageData.horizontalImages), 1, false)
                     homeResults[index] = listOf(skeleton)
+                    expandable[pageData.name] = skeleton
                 }
             }
         } else {
@@ -400,7 +409,10 @@ class HomeViewModel : ViewModel() {
                         // Handle potential extra items not in the initial homeResults structure
                         expandable.forEach { (name, list) ->
                             if (!orderedMap.containsKey(name)) {
-                                orderedMap[name] = list
+                                val isSkeleton = list.list.list.all { it.url.startsWith("loading://") }
+                                if (!isSkeleton) {
+                                    orderedMap[name] = list
+                                }
                             }
                         }
 
@@ -422,12 +434,12 @@ class HomeViewModel : ViewModel() {
                             _randomItems.postValue(randomItems)
 
                             previewJob = viewModelScope.launchSafe {
-                                // 1. Load the first item ASAP for instant feedback
+                                // 1. Load the first 5 items ASAP for instant feedback
                                 if (updatePreviewResponses(
                                         previewResponses,
                                         previewResponsesAdded,
                                         currentShuffledList,
-                                        1
+                                        5
                                     ) > 0
                                 ) {
                                     val data =
@@ -436,12 +448,12 @@ class HomeViewModel : ViewModel() {
                                     setKey(bannerCacheKey, previewResponses.toList())
                                 }
 
-                                // 2. Load 2 more items to have a decent buffer
+                                // 2. Load more items in the background
                                 if (updatePreviewResponses(
                                         previewResponses,
                                         previewResponsesAdded,
                                         currentShuffledList,
-                                        2
+                                        5
                                     ) > 0
                                 ) {
                                     val data =
