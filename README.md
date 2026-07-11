@@ -1,111 +1,134 @@
-# CloudStream
+# CloudX
 
-**⚠️ Warning: By default, this app doesn't provide any video sources; you have to install extensions to add functionality to the app.**
+> ⚡ A performance-focused fork of CloudStream with improved branding, UI polish, and continuous enhancements.
 
-[![Discord](https://invidget.switchblade.xyz/5Hus6fM)](https://discord.gg/5Hus6fM)
+**Current Version:** **v1.0.1**
 
+---
 
-## Table of Contents: 
-+ [About Us:](#about_us)
-+ [Installation Steps:](#install_rules)
-+ [Contributing:](#contributing)
-+ [Issues:](#issues)
-  + [Bugs Reports:](#bug_report)
-  + [Enhancement:](#enhancment)
-+ [Extension Development:](#extensions)
-+ [Language Support:](#languages)
-+ [Further Sources](#contact_and_sources)
+## ⚠️ Important
 
+CloudX does **not** provide any video sources by default.
 
-<a id="about_us"></a>
+To use the application, install compatible extensions and repositories.
 
-## About us: 
+CloudX does not host or distribute copyrighted content.
 
-**CloudStream is a media center that prioritizes and emphasizes complete freedom and flexibility for users and developers.** 
+---
 
-CloudStream is an extension-based multimedia player with tracking support. There are extensions to view videos from: 
+# Table of Contents
 
-+ [Librevox (audio-books)](https://librivox.org/) 
-+ [Youtube](https://www.youtube.com/)
-+ [Twitch](https://www.twitch.tv/)
-+ [iptv-org (A collection of publicly available IPTV (Internet Protocol television) channels from all over the world.)](https://github.com/iptv-org/iptv) 
-+ [nginx](https://nginx.org/)
-+ And more... 
+- About CloudX
+- Features
+- Installation
+- What's New
+- Roadmap
+- Contributing
+- Credits
+- License
 
+---
 
-**Please don't create illegal extensions or use any that host any copyrighted media.** For more details about our stance on the DMCA and EUCD, you can read about it on our organization: [reCloudStream](https://github.com/recloudstream)
+# About CloudX
 
-#### Important Copyright Note: 
+CloudX is a fork of the open-source CloudStream project.
 
-Our documentation is unmaintained and open to contributions; therefore, apps and sources, extensions in recommended sources, and recommended apps are not officially moderated or endorsed by CloudStream; if you or another copyright owner identify an extension that breaches your copyright, please let us know. 
+The goal of CloudX is to provide a faster, cleaner and more polished streaming experience while remaining compatible with the CloudStream extension ecosystem.
 
+Current focus areas include:
 
-#### Features:
-+ **AdFree**, No ads whatsoever
-+ No tracking/analytics
-+ Bookmarks
-+ Phone and TV support
-+ Chromecast
-+ Extension system for personal customization
+- Performance optimization
+- Better UI/UX
+- Faster homepage loading
+- Better caching
+- Continuous improvements
 
+---
 
-<a id="install_rules"></a>
+# Features
 
-## Installation: 
+- ⚡ Performance optimized
+- 🎨 CloudX branding
+- 🚀 Faster homepage loading
+- 📺 Phone & Android TV support
+- 🔌 Extension support
+- ❤️ Bookmark support
+- 📡 Chromecast support
+- 🚫 No ads
+- 🔒 No tracking or analytics
 
-Our documentation provides the steps to install and configure CloudStream for your streaming needs.
+---
 
-[Getting Started With CloudStream:](https://recloudstream.github.io/csdocs/)
+# Installation
 
-<a id="contributing"></a>
+1. Download the latest APK from the **GitHub Releases** page.
+2. Install the APK.
+3. Add your preferred repositories.
+4. Install extensions.
+5. Enjoy CloudX.
 
-## Contributing:
-We **happily** accept any contributions to our project. To find out where you can start contributing towards the project, please look [at our issues tab](/cloudstream/issues)
+---
 
+# What's New in v1.0.1
 
+### ✨ Improvements
 
-<a id="issues"></a> 
- 
-### Issues: 
-While we **actively** accept issues and pull requests, we do require you fill out an [template](https://github.com/recloudstream/cloudstream/issues/new/choose) for issues. These include the following:
+- New CloudX branding
+- New launcher icon
+- UI polish
+- Homepage performance improvements
 
-<a id="bug_report"></a>
+### 🛠 Fixes
 
-- [Bug Report Template: ](https://github.com/recloudstream/cloudstream/issues/new?assignees=&labels=bug&projects=&template=application-bug.yml)
-  - For bug reports, we want as much info as possible, including your downloaded version of CloudeStream, device and updated version (if possible, current API),
-    expected behavior of the program, and the actual behavior that the program did, most importantly we require clear, reproducible steps of the bug. If your bug can't be       reproduced, it is unlikely we'll work on your issue.
-    
-<a id="enhancment"></a>
-  
-- [Feature Request Template: ](https://github.com/recloudstream/cloudstream/issues/new?assignees=&labels=enhancement&projects=&template=feature-request.yml)
-  - Before adding a feature request, please check to see if a feature request already has been requested.  
+- Various bug fixes
+- Stability improvements
 
+---
 
-### Extensions:
- 
-**Further details on creating extensions for CloudStream are found in our documentation.**
+# Roadmap
 
-[Guide: For Extension Developers](https://recloudstream.github.io/csdocs/devs/gettingstarted/) 
+## v1.1
 
-<a id="contact_and_sources"></a>
+- Better homepage caching
+- Lazy homepage loading
+- Better search experience
 
-## Further Sources: 
+## v1.2
 
-As well as providing clear install steps, our [website](https://dweb.link/ipns/cloudstream.on.fleek.co/) includes a wide variety of other tools, such as: 
-- [Troubleshooting](https://recloudstream.github.io/csdocs/troubleshooting/)
-- [Further CloudStream Repositories](https://recloudstream.github.io/csdocs/repositories/) 
-- Set-Up for other devices, such as:
-  - [Android TV](https://recloudstream.github.io/csdocs/other-devices/tv/)
-  - [Windows](https://recloudstream.github.io/csdocs/other-devices/windows/)
-  - [Linux](https://recloudstream.github.io/csdocs/other-devices/linux/)
-- And more...
+- Modern UI refresh
+- Player improvements
+- More customization options
 
-<a id="languages"> </a>  
+## v2.0
 
-### Supported languages:
+- Redesigned homepage
+- Recommendation engine
+- Additional performance enhancements
 
-Even if you can't contribute to the code or documentation, we always look for those who can contribute to translation and language support. Your contribution is exceptionally appreciated; you can check our translation from the figure below. 
+---
 
-<a href="https://hosted.weblate.org/engage/cloudstream/">
-  <img src="https://hosted.weblate.org/widgets/cloudstream/-/app/multi-auto.svg" alt="Translation status" />
-</a>
+# Contributing
+
+Contributions are welcome.
+
+If you'd like to improve CloudX, feel free to open an Issue or submit a Pull Request.
+
+Please discuss major changes before opening large pull requests.
+
+---
+
+# Credits
+
+CloudX is based on the excellent **CloudStream** open-source project.
+
+Huge thanks to all CloudStream developers and contributors for creating and maintaining the original application.
+
+CloudX builds upon their work while introducing its own improvements and roadmap.
+
+---
+
+# License
+
+CloudX is released under the **same open-source license** as the original CloudStream project.
+
+Please see the **LICENSE** file for complete licensing information.
