@@ -49,6 +49,7 @@ import com.lagradost.cloudstream3.ui.search.SEARCH_ACTION_LOAD
 import com.lagradost.cloudstream3.ui.search.SEARCH_ACTION_SHOW_METADATA
 import com.lagradost.cloudstream3.ui.search.SearchClickCallback
 import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
+import com.lagradost.cloudstream3.ui.settings.Globals.PHONE
 import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.AppContextUtils.html
@@ -243,6 +244,8 @@ class HomeParentItemAdapterPreview(
 
         private val homeNonePadding: View = itemView.findViewById(R.id.home_none_padding)
         private val bannerShimmer: ShimmerFrameLayout? = itemView.findViewById(R.id.home_banner_shimmer)
+        private val bannerButtons: View? = itemView.findViewById(R.id.home_preview_title_holder)
+        private val searchBar: View? = itemView.findViewById(R.id.home_padding)
 
         fun onSelect(item: LoadResponse, position: Int) {
             (binding as? FragmentHomeHeadTvBinding)?.apply {
@@ -553,40 +556,29 @@ class HomeParentItemAdapterPreview(
         }
 
         private fun updatePreview(preview: Resource<Pair<Boolean, List<LoadResponse>>>) {
-            if (preview is Resource.Success) {
-                homeNonePadding.apply {
-                    val params = layoutParams
-                    params.height = 0
-                    layoutParams = params
-                }
-            } else fixPaddingStatusbarView(homeNonePadding)
+            // Keep padding consistent on Phone to prevent "uplift" layout shifts
+            if (isLayout(PHONE)) {
+                fixPaddingStatusbarView(homeNonePadding)
+                searchBar?.isVisible = true
+            }
 
             when (preview) {
                 is Resource.Success -> {
-                    // We don't hide shimmer here, it's done in onImageLoaded of the adapter
-                    // to ensure a smooth transition without a black flash.
-
-                    val firstLoad = previewAdapter.itemCount == 0
+                    // Shimmer is hidden by onImageLoaded callback in the adapter 
+                    // to ensure a perfect 1:1 replacement with no black flash.
+                    
                     previewAdapter.submitList(preview.value.second)
                     previewAdapter.hasMoreItems = preview.value.first
 
-                    // If we already have items (e.g. from cache), keep it visible
-                    // Use isInvisible instead of isGone so images start loading
-                    if (firstLoad) {
-                        previewViewpager.isInvisible = true
-                        previewViewpagerText.isInvisible = true
-                    } else {
-                        previewViewpager.isVisible = true
-                        previewViewpagerText.isVisible = true
-                    }
-
                     alternativeAccountPadding?.isVisible = false
                     (binding as? FragmentHomeHeadTvBinding)?.apply {
-                        if (firstLoad) homePreviewInfoBtt.isInvisible = true
-                        else homePreviewInfoBtt.isVisible = true
+                        homePreviewInfoBtt.isVisible = true
                     }
                     
-                    // Explicitly bind the current item to ensure instant loading
+                    // Reveal content-dependent UI
+                    bannerButtons?.isVisible = true
+                    previewViewpagerText.isVisible = true
+                    
                     val currentPos = previewViewpager.currentItem
                     val item = preview.value.second.getOrNull(currentPos)
                     if (item != null) {
@@ -598,9 +590,15 @@ class HomeParentItemAdapterPreview(
                     if (previewAdapter.itemCount == 0) {
                         bannerShimmer?.startShimmer()
                         bannerShimmer?.isVisible = true
-                        // Use isInvisible so it's ready in the layout but not shown
                         previewViewpager.isInvisible = true
-                        previewViewpagerText.isInvisible = true
+                        
+                        // Keep these present but hidden during initial load to preserve layout
+                        bannerButtons?.isInvisible = true
+                        
+                        // On TV, this is the text overlay, hide it until we have a title/desc
+                        if (!isLayout(PHONE)) {
+                            previewViewpagerText.isInvisible = true
+                        }
                     }
                 }
 
@@ -611,7 +609,10 @@ class HomeParentItemAdapterPreview(
                     previewAdapter.submitList(listOf())
                     previewViewpager.setCurrentItem(0, false)
                     previewViewpager.isVisible = false
+                    
+                    bannerButtons?.isVisible = false
                     previewViewpagerText.isVisible = false
+
                     alternativeAccountPadding?.isVisible = true
                     (binding as? FragmentHomeHeadTvBinding)?.apply {
                         homePreviewInfoBtt.isVisible = false
