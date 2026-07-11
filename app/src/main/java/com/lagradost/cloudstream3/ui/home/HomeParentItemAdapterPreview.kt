@@ -245,7 +245,9 @@ class HomeParentItemAdapterPreview(
         private val homeNonePadding: View = itemView.findViewById(R.id.home_none_padding)
         private val bannerShimmer: ShimmerFrameLayout? = itemView.findViewById(R.id.home_banner_shimmer)
         private val bannerButtons: View? = itemView.findViewById(R.id.home_preview_title_holder)
-        private val searchBar: View? = itemView.findViewById(R.id.home_padding)
+        private val bannerPlay: View? = itemView.findViewById(R.id.home_preview_play)
+        private val bannerInfo: View? = itemView.findViewById(R.id.home_preview_info)
+        private val bannerBookmark: View? = itemView.findViewById(R.id.home_preview_bookmark)
 
         fun onSelect(item: LoadResponse, position: Int) {
             (binding as? FragmentHomeHeadTvBinding)?.apply {
@@ -429,6 +431,10 @@ class HomeParentItemAdapterPreview(
             )
 
             fixPaddingStatusbarMargin(topPadding)
+            // Ensure status bar padding is fixed immediately to prevent "uplift" shifts
+            if (isLayout(PHONE)) {
+                fixPaddingStatusbarView(homeNonePadding)
+            }
 
             for ((chip, watch) in toggleList) {
                 chip.isChecked = false
@@ -474,11 +480,11 @@ class HomeParentItemAdapterPreview(
                 } else false
             }
 
-            alternateHeadProfilePicCard?.setOnLongClickListener {
-                showAccountEditBox(it.context)
+            alternateHeadProfilePicCard?.setOnLongClickListener { v ->
+                showAccountEditBox(v.context)
             }
-            headProfilePicCard?.setOnLongClickListener {
-                showAccountEditBox(it.context)
+            headProfilePicCard?.setOnLongClickListener { v ->
+                showAccountEditBox(v.context)
             }
 
             alternateHeadProfilePicCard?.setOnClickListener {
@@ -556,12 +562,6 @@ class HomeParentItemAdapterPreview(
         }
 
         private fun updatePreview(preview: Resource<Pair<Boolean, List<LoadResponse>>>) {
-            // Keep padding consistent on Phone to prevent "uplift" layout shifts
-            if (isLayout(PHONE)) {
-                fixPaddingStatusbarView(homeNonePadding)
-                searchBar?.isVisible = true
-            }
-
             when (preview) {
                 is Resource.Success -> {
                     // Shimmer is hidden by onImageLoaded callback in the adapter 
@@ -573,10 +573,14 @@ class HomeParentItemAdapterPreview(
                     alternativeAccountPadding?.isVisible = false
                     (binding as? FragmentHomeHeadTvBinding)?.apply {
                         homePreviewInfoBtt.isVisible = true
+                        homePreviewInfoBtt.isEnabled = true
                     }
                     
                     // Reveal content-dependent UI
                     bannerButtons?.isVisible = true
+                    bannerPlay?.isEnabled = true
+                    bannerInfo?.isEnabled = true
+                    bannerBookmark?.isEnabled = true
                     previewViewpagerText.isVisible = true
                     
                     val currentPos = previewViewpager.currentItem
@@ -592,12 +596,23 @@ class HomeParentItemAdapterPreview(
                         bannerShimmer?.isVisible = true
                         previewViewpager.isInvisible = true
                         
-                        // Keep these present but hidden during initial load to preserve layout
-                        bannerButtons?.isInvisible = true
+                        // Keep buttons visible but disabled to preserve layout and prevent flicker
+                        bannerButtons?.isVisible = true
+                        bannerPlay?.isEnabled = false
+                        bannerInfo?.isEnabled = false
+                        bannerBookmark?.isEnabled = false
                         
+                        // On TV, this is the text overlay/info button
+                        (binding as? FragmentHomeHeadTvBinding)?.apply {
+                            homePreviewInfoBtt.isVisible = true
+                            homePreviewInfoBtt.isEnabled = false
+                        }
+
                         // On TV, this is the text overlay, hide it until we have a title/desc
                         if (!isLayout(PHONE)) {
                             previewViewpagerText.isInvisible = true
+                        } else {
+                            previewViewpagerText.isVisible = true
                         }
                     }
                 }

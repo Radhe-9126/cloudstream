@@ -269,6 +269,12 @@ class HomeViewModel : ViewModel() {
         val bannerCacheKey = "$apiName/$HOME_BANNER_CACHE"
         val pageCacheKey = "$apiName/$HOME_PAGE_CACHE"
 
+        // check if we already have real data in memory
+        val hasRealData = expandable.values.any { row ->
+            row.list.list.any { !it.url.startsWith("loading://") }
+        }
+        if (hasRealData && _apiName.value == apiName) return
+
         val cachedBanner = getKey<List<LoadResponse>>(bannerCacheKey)
         if (!cachedBanner.isNullOrEmpty()) {
             previewResponses.clear()
@@ -603,15 +609,29 @@ class HomeViewModel : ViewModel() {
         ioSafe {
             // If we have an api name, load cache/skeletons immediately on the background thread
             // but before the main load logic to ensure they appear ASAP.
-            if (preferredApiName != null && preferredApiName != noneApi.name) {
-                _apiName.postValue(preferredApiName)
-                loadCache(preferredApiName)
-            }
+            // if (preferredApiName != null && preferredApiName != noneApi.name) {
+            //    _apiName.postValue(preferredApiName)
+            //    loadCache(preferredApiName)
+            // }
 
             val currentPage = page.value
             val currentLoading = isCurrentlyLoadingName
-            if (!forceReload && (currentPage is Resource.Success && currentPage.value.isNotEmpty() || (currentLoading != null && currentLoading == preferredApiName))) {
+
+            // Check if we already have success with real data
+            val hasRealData = currentPage is Resource.Success && 
+                _apiName.value == preferredApiName &&
+                currentPage.value.values.any { row ->
+                    row.list.list.any { !it.url.startsWith("loading://") }
+                }
+
+            if (!forceReload && (hasRealData || (currentLoading != null && currentLoading == preferredApiName))) {
                 return@ioSafe
+            }
+
+            // Only load cache/skeletons if we don't have real data or are forcing a reload
+            if (preferredApiName != null && preferredApiName != noneApi.name) {
+                _apiName.postValue(preferredApiName)
+                loadCache(preferredApiName)
             }
 
             val api = getApiFromNameNull(preferredApiName)

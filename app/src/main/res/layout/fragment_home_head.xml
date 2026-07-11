@@ -16,7 +16,8 @@
     <FrameLayout
         android:id="@+id/home_preview_viewpager_text"
         android:layout_width="match_parent"
-        android:layout_height="440dp">
+        android:layout_height="440dp"
+        android:minHeight="440dp">
 
         <FrameLayout
             android:layout_width="match_parent"
