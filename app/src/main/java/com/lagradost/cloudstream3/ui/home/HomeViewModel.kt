@@ -1,6 +1,5 @@
 package com.lagradost.cloudstream3.ui.home
 
-import android.os.Build
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -18,6 +17,9 @@ import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainActivity
 import com.lagradost.cloudstream3.SearchResponse
+import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.SearchQuality
+import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.mvvm.Resource
 import com.lagradost.cloudstream3.mvvm.debugAssert
@@ -42,6 +44,8 @@ import com.lagradost.cloudstream3.utils.AppContextUtils.filterSearchResultByFilm
 import com.lagradost.cloudstream3.utils.AppContextUtils.loadResult
 import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
 import com.lagradost.cloudstream3.utils.DataStoreHelper
+import com.lagradost.cloudstream3.utils.HOME_BANNER_CACHE
+import com.lagradost.cloudstream3.utils.HOME_PAGE_CACHE
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getAllWatchStateIds
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getBookmarkedData
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount
@@ -53,6 +57,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import com.fasterxml.jackson.annotation.JsonProperty
 import java.util.EnumSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -150,15 +156,27 @@ class HomeViewModel : ViewModel() {
         onGoingLoad = load(api)
     }
 
+    data class LoadingSearchResponse(
+        @JsonProperty("name") override val name: String = "Loading...",
+        @JsonProperty("url") override val url: String = "loading://",
+        @JsonProperty("apiName") override val apiName: String = "",
+        @JsonProperty("type") override var type: TvType? = null,
+        @JsonProperty("posterUrl") override var posterUrl: String? = null,
+        @JsonProperty("posterHeaders") override var posterHeaders: Map<String, String>? = null,
+        @JsonProperty("id") override var id: Int? = -1,
+        @JsonProperty("quality") override var quality: SearchQuality? = null,
+        @JsonProperty("score") override var score: Score? = null
+    ) : SearchResponse
+
     data class ExpandableHomepageList(
-        var list: HomePageList,
-        var currentPage: Int,
-        var hasNext: Boolean,
+        @JsonProperty("list") val list: HomePageList,
+        @JsonProperty("currentPage") val currentPage: Int,
+        @JsonProperty("hasNext") val hasNext: Boolean,
     )
 
     private val expandable = ConcurrentHashMap<String, ExpandableHomepageList>()
     private val _page =
-        MutableLiveData<Resource<Map<String, ExpandableHomepageList>>>(Resource.Loading())
+        MutableLiveData<Resource<Map<String, ExpandableHomepageList>>>()
     val page: LiveData<Resource<Map<String, ExpandableHomepageList>>> = _page
 
     val lock: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -181,22 +199,29 @@ class HomeViewModel : ViewModel() {
                     next.value.filterNotNull().forEach { main ->
                         main.items.forEach { newList ->
                             val key = newList.name
-                            expandable[key]?.apply {
-                                hasNext = main.hasNext
-                                currentPage = nextPage
+                            expandable[key]?.let { innerCurrent ->
+                                val updatedList = innerCurrent.list.copy(
+                                    list = (innerCurrent.list.list + newList.list).distinctBy { it.url }
+                                )
+                                val updated = innerCurrent.copy(
+                                    hasNext = main.hasNext,
+                                    currentPage = nextPage,
+                                    list = updatedList
+                                )
+                                expandable[key] = updated
 
-                                debugWarning({ newList.list.any { outer -> this.list.list.any { it.url == outer.url } } }) {
-                                    "Expanded contained an item that was previously already in the list\n${list.name} = ${this.list.list}\n${newList.name} = ${newList.list}"
+                                // Update popup if it's currently showing this category
+                                val currentPopup = _popup.value
+                                if (currentPopup != null && currentPopup.first.list.name == key) {
+                                    _popup.postValue(updated to currentPopup.second)
                                 }
-
-                                this.list.list = (this.list.list + newList.list).distinctBy { it.url }
                             } ?: debugWarning {
                                 "Expanded an item not in main load named $key, current list is ${expandable.keys}"
                             }
                         }
                     }
                 } else {
-                    current.hasNext = false
+                    expandable[name] = current.copy(hasNext = false)
                 }
             }
             _page.postValue(Resource.Success(expandable))
@@ -247,9 +272,48 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    private fun load(api: MainAPI): Job = ioSafe {
-        val totalStart = System.currentTimeMillis()
+    private fun loadCache(apiName: String) {
+        val bannerCacheKey = "$apiName/$HOME_BANNER_CACHE"
+        val pageCacheKey = "$apiName/$HOME_PAGE_CACHE"
 
+        // check if we already have real data in memory
+        val hasRealData = expandable.values.any { row ->
+            row.list.list.any { !it.url.startsWith("loading://") }
+        }
+        if (hasRealData && _apiName.value == apiName) return
+
+        val cachedBanner = getKey<List<LoadResponse>>(bannerCacheKey)
+        if (!cachedBanner.isNullOrEmpty()) {
+            previewResponses.clear()
+            previewResponses.addAll(cachedBanner)
+            previewResponsesAdded.clear()
+            previewResponsesAdded.addAll(cachedBanner.map { it.url })
+            _preview.postValue(Resource.Success(true to previewResponses))
+        } else {
+            _preview.postValue(Resource.Loading())
+            previewResponses.clear()
+            previewResponsesAdded.clear()
+        }
+
+        val cachedPage = getKey<Map<String, ExpandableHomepageList>>(pageCacheKey)
+        if (!cachedPage.isNullOrEmpty()) {
+            expandable.clear()
+            expandable.putAll(cachedPage)
+            _page.postValue(Resource.Success(cachedPage))
+        } else {
+            // Post generic skeletons immediately if no cache
+            val genericNames = listOf("Trending", "Popular", "Top Rated")
+            val skeletons = genericNames.associateWith { name ->
+                val response = List(6) { i -> LoadingSearchResponse(url = "loading://$name/$i") }
+                ExpandableHomepageList(HomePageList(name, response), 1, false)
+            }
+            expandable.clear()
+            expandable.putAll(skeletons)
+            _page.postValue(Resource.Success(skeletons))
+        }
+    }
+
+    private fun load(api: MainAPI): Job = ioSafe {
         repo = APIRepository(api)
         val currentRepo = this@HomeViewModel.repo ?: return@ioSafe
 
@@ -262,17 +326,59 @@ class HomeViewModel : ViewModel() {
             return@ioSafe
         }
 
-        _page.postValue(Resource.Loading())
-        _preview.postValue(Resource.Loading())
+        loadCache(api.name)
+
         // cancel the current preview expand as that is no longer relevant
         addJob?.cancel()
 
-        expandable.clear()
-        previewResponses.clear()
-        previewResponsesAdded.clear()
-
         val mainPageData = currentRepo.mainPage
-        val homeResults = arrayOfNulls<List<ExpandableHomepageList>>(mainPageData.size)
+        val bannerCacheKey = "${api.name}/$HOME_BANNER_CACHE"
+        val pageCacheKey = "${api.name}/$HOME_PAGE_CACHE"
+        val homeResults = arrayOfNulls<List<ExpandableHomepageList>>(maxOf(3, mainPageData.size))
+
+        // Pre-fill from cache or create skeleton placeholders for at least 3 sections
+        if (mainPageData.isNotEmpty()) {
+            // Clear generic skeletons from expandable if we have structural info from mainPageData
+            val hasRealData = expandable.values.any { row ->
+                row.list.list.any { !it.url.startsWith("loading://") }
+            }
+            if (!hasRealData) {
+                expandable.clear()
+            }
+
+            mainPageData.forEachIndexed { index, pageData ->
+                val cached = expandable[pageData.name]
+                if (cached != null) {
+                    homeResults[index] = listOf(cached)
+                } else if (index < 3) {
+                    // Create a skeleton row if we don't have cache for the first 3 sections
+                    val skeletons = List(6) { i -> LoadingSearchResponse(url = "loading://${pageData.name}/$i") }
+                    val skeleton = ExpandableHomepageList(HomePageList(pageData.name, skeletons, pageData.horizontalImages), 1, false)
+                    homeResults[index] = listOf(skeleton)
+                    expandable[pageData.name] = skeleton
+                }
+            }
+        } else {
+            // No main page data yet, show generic skeletons
+            val genericNames = listOf("Trending", "Popular", "Top Rated")
+            genericNames.forEachIndexed { index, name ->
+                val skeletons = List(6) { i -> LoadingSearchResponse(url = "loading://$name/$i") }
+                val skeleton = ExpandableHomepageList(HomePageList(name, skeletons), 1, false)
+                homeResults[index] = listOf(skeleton)
+            }
+        }
+
+        // Immediately post the initial state (cache + skeletons)
+        val initialMap = LinkedHashMap<String, ExpandableHomepageList>()
+        homeResults.forEach { list ->
+            list?.forEach { item ->
+                initialMap[item.list.name] = item
+            }
+        }
+        if (initialMap.isNotEmpty()) {
+            _page.postValue(Resource.Success(initialMap))
+        }
+
         val allItems = mutableListOf<SearchResponse>()
         var previewJob: Job? = null
         val syncLock = Any()
@@ -287,14 +393,25 @@ class HomeViewModel : ViewModel() {
                         home.items.forEach { list ->
                             val filteredList = context?.filterHomePageListByFilmQuality(list) ?: list
                             val expandableList = ExpandableHomepageList(filteredList, 1, home.hasNext)
+                            
                             expandable[list.name] = expandableList
+                            
                             newItems.addAll(filteredList.list)
                             currentResults.add(expandableList)
+
+                            // Update popup if it's currently showing this category
+                            val currentPopup = _popup.value
+                            if (currentPopup != null && currentPopup.first.list.name == list.name) {
+                                _popup.postValue(expandableList to currentPopup.second)
+                            }
                         }
                     }
 
                     synchronized(syncLock) {
-                        homeResults[index] = currentResults
+                        // Update homeResults at the correct index
+                        if (index < homeResults.size) {
+                            homeResults[index] = currentResults
+                        }
 
                         // Build ordered map for UI to prevent reshuffling
                         val orderedMap = LinkedHashMap<String, ExpandableHomepageList>()
@@ -303,7 +420,23 @@ class HomeViewModel : ViewModel() {
                                 orderedMap[item.list.name] = item
                             }
                         }
-                        _page.postValue(Resource.Success(orderedMap))
+                        
+                        // Handle potential extra items not in the initial homeResults structure
+                        expandable.forEach { (name, list) ->
+                            if (!orderedMap.containsKey(name)) {
+                                val isSkeleton = list.list.list.all { it.url.startsWith("loading://") }
+                                if (!isSkeleton) {
+                                    orderedMap[name] = list
+                                }
+                            }
+                        }
+
+                        // Only post success if we have at least some items to show
+                        if (orderedMap.isNotEmpty()) {
+                            _page.postValue(Resource.Success(orderedMap))
+                        }
+
+                        setKey(pageCacheKey, orderedMap)
 
                         allItems.addAll(newItems)
                         if (previewJob == null && allItems.isNotEmpty()) {
@@ -316,45 +449,44 @@ class HomeViewModel : ViewModel() {
                             _randomItems.postValue(randomItems)
 
                             previewJob = viewModelScope.launchSafe {
-                                val previewStart = System.currentTimeMillis()
-                                // 1. Load the first item ASAP for instant feedback
+                                // 1. Load the first 5 items ASAP for instant feedback
                                 if (updatePreviewResponses(
                                         previewResponses,
                                         previewResponsesAdded,
                                         currentShuffledList,
-                                        1
+                                        5
                                     ) > 0
                                 ) {
-                                    _preview.postValue(
-                                        Resource.Success(
-                                            (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
-                                        )
-                                    )
+                                    val data =
+                                        (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                    _preview.postValue(Resource.Success(data))
+                                    setKey(bannerCacheKey, previewResponses.toList())
                                 }
 
-                                // 2. Load 2 more items to have a decent buffer
+                                // 2. Load more items in the background
                                 if (updatePreviewResponses(
                                         previewResponses,
                                         previewResponsesAdded,
                                         currentShuffledList,
-                                        2
+                                        5
                                     ) > 0
                                 ) {
-                                    _preview.postValue(
-                                        Resource.Success(
-                                            (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
-                                        )
-                                    )
+                                    val data =
+                                        (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                    _preview.postValue(Resource.Success(data))
+                                    setKey(bannerCacheKey, previewResponses.toList())
                                 }
                             }
                         }
                     }
                 }
+
                 is Resource.Failure -> {
                     synchronized(syncLock) {
                         lastFailure = res
                     }
                 }
+
                 else -> Unit
             }
         }
@@ -451,6 +583,14 @@ class HomeViewModel : ViewModel() {
         MainActivity.mainPluginsLoadedEvent += ::afterMainPluginsLoaded
         MainActivity.reloadHomeEvent += ::reloadHome
         MainActivity.reloadAccountEvent += ::reloadAccount
+
+        // Immediate cache/skeleton load on launch
+        val lastApi = DataStoreHelper.currentHomePage
+        if (lastApi != null && lastApi != noneApi.name) {
+            _apiName.value = lastApi
+            _preview.value = Resource.Loading()
+            loadCache(lastApi)
+        }
     }
 
     override fun onCleared() {
@@ -495,20 +635,30 @@ class HomeViewModel : ViewModel() {
         fromUI: Boolean = false
     ) =
         ioSafe {
-            //println("trying to load $preferredApiName")
-            // Since plugins are loaded in stages this function can get called multiple times.
-            // The issue with this is that the homepage may be fetched multiple times while the first request is loading
-            // api?.let { expandable[it.name]?.list?.list?.isNotEmpty() } == true
             val currentPage = page.value
-
-            // if we don't need to reload and we have a valid homepage or currently loading the same thing then return
             val currentLoading = isCurrentlyLoadingName
-            if (!forceReload && (currentPage is Resource.Success && currentPage.value.isNotEmpty() || (currentLoading != null && currentLoading == preferredApiName))) {
+
+            // Check if we already have success with real data
+            val hasRealData = currentPage is Resource.Success && 
+                _apiName.value == preferredApiName &&
+                currentPage.value.values.any { row ->
+                    row.list.list.any { !it.url.startsWith("loading://") }
+                }
+
+            if (!forceReload && (hasRealData || (currentLoading != null && currentLoading == preferredApiName))) {
                 return@ioSafe
             }
 
+            // If we have an api name, load cache/skeletons immediately on the background thread
+            // but before the main load logic to ensure they appear ASAP.
+            if (preferredApiName != null && preferredApiName != noneApi.name) {
+                _apiName.postValue(preferredApiName)
+                loadCache(preferredApiName)
+            }
+
             val api = getApiFromNameNull(preferredApiName)
-            if (preferredApiName == noneApi.name) {
+            if (preferredApiName == null || preferredApiName == noneApi.name) {
+                // ...
                 // just set to random
                 if (fromUI) DataStoreHelper.currentHomePage = noneApi.name
                 loadAndCancel(noneApi)
@@ -529,9 +679,7 @@ class HomeViewModel : ViewModel() {
                 if (PluginManager.loadedOnlinePlugins || PluginManager.isSafeMode()) {
                     loadAndCancel(noneApi)
                 } else {
-                    _page.postValue(Resource.Loading())
-                    if (preferredApiName != null)
-                        _apiName.postValue(preferredApiName)
+                    // Cache/Skeletons already loaded above
                 }
             } else {
                 // if the api is found, then set it to it and save key

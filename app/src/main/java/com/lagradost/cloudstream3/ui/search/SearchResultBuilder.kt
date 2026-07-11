@@ -29,6 +29,8 @@ import com.lagradost.cloudstream3.utils.ImageLoader.loadImage
 import com.lagradost.cloudstream3.utils.SubtitleHelper
 import com.lagradost.cloudstream3.utils.UIHelper.colorFromAttribute
 import com.lagradost.cloudstream3.utils.getImageFromDrawable
+import com.lagradost.cloudstream3.ui.home.HomeViewModel
+import com.facebook.shimmer.ShimmerFrameLayout
 
 object SearchResultBuilder {
     private val showCache: MutableMap<String, Boolean> = mutableMapOf()
@@ -68,6 +70,24 @@ object SearchResultBuilder {
         val bar: ProgressBar? = itemView.findViewById(R.id.watchProgress)
         val playImg: ImageView? = itemView.findViewById(R.id.search_item_download_play)
         val episodeText: TextView? = itemView.findViewById(R.id.episode_text)
+
+        // Shimmer handling for skeleton/loading items
+        if (card is HomeViewModel.LoadingSearchResponse) {
+            itemView.findViewById<View>(R.id.watch_progress_container)?.isVisible = false
+            shadow?.isVisible = false
+            cardText?.isVisible = false
+            textQuality?.isVisible = false
+            textIsDub?.isVisible = false
+            textIsSub?.isVisible = false
+            rating?.isVisible = false
+            textFlag?.isVisible = false
+            episodeText?.isVisible = false
+
+            cardView.setImageResource(R.color.grayShimmer)
+            // If we have a shimmer container in the grid item layout, start it
+            // (Note: home_result_grid doesn't have one yet, but we can use background color)
+            return
+        }
 
         // Do logic
 

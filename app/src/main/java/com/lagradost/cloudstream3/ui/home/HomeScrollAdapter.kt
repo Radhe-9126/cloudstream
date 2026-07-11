@@ -18,7 +18,8 @@ import com.lagradost.cloudstream3.utils.AppContextUtils.html
 import com.lagradost.cloudstream3.utils.ImageLoader.loadImage
 
 class HomeScrollAdapter(
-    val callback: ((View, Int, LoadResponse) -> Unit)
+    val callback: ((View, Int, LoadResponse) -> Unit),
+    val onImageLoaded: (() -> Unit)? = null,
 ) : NoStateAdapter<LoadResponse>(diffCallback = BaseDiffCallback(itemSame = { a, b ->
     a.uniqueUrl == b.uniqueUrl && a.name == b.name
 })) {
@@ -58,7 +59,16 @@ class HomeScrollAdapter(
 
         when (binding) {
             is HomeScrollViewBinding -> {
-                binding.homeScrollPreview.loadImage(posterUrl)
+                binding.homeScrollPreview.loadImage(posterUrl, builder = {
+                    listener(
+                        onSuccess = { _, _ ->
+                            onImageLoaded?.invoke()
+                        },
+                        onError = { _, _ ->
+                            onImageLoaded?.invoke()
+                        }
+                    )
+                })
                 binding.homeScrollPreviewTags.apply {
                     text = item.tags?.joinToString(" • ") ?: ""
                     isGone = item.tags.isNullOrEmpty()
@@ -79,7 +89,16 @@ class HomeScrollAdapter(
                 binding.homeScrollPreview.setOnClickListener { view ->
                     callback.invoke(view ?: return@setOnClickListener, position, item)
                 }
-                binding.homeScrollPreview.loadImage(posterUrl)
+                binding.homeScrollPreview.loadImage(posterUrl, builder = {
+                    listener(
+                        onSuccess = { _, _ ->
+                            onImageLoaded?.invoke()
+                        },
+                        onError = { _, _ ->
+                            onImageLoaded?.invoke()
+                        }
+                    )
+                })
             }
         }
     }

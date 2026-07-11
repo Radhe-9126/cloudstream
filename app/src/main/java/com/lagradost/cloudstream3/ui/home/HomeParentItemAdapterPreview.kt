@@ -11,6 +11,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isGone
+import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.findViewTreeLifecycleOwner
@@ -48,6 +49,7 @@ import com.lagradost.cloudstream3.ui.search.SEARCH_ACTION_LOAD
 import com.lagradost.cloudstream3.ui.search.SEARCH_ACTION_SHOW_METADATA
 import com.lagradost.cloudstream3.ui.search.SearchClickCallback
 import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
+import com.lagradost.cloudstream3.ui.settings.Globals.PHONE
 import com.lagradost.cloudstream3.ui.settings.Globals.TV
 import com.lagradost.cloudstream3.ui.settings.Globals.isLayout
 import com.lagradost.cloudstream3.utils.AppContextUtils.html
@@ -61,6 +63,7 @@ import com.lagradost.cloudstream3.utils.UIHelper.fixPaddingStatusbarView
 import com.lagradost.cloudstream3.utils.UIHelper.populateChips
 import androidx.core.graphics.toColorInt
 import com.lagradost.cloudstream3.ui.setRecycledViewPool
+import com.facebook.shimmer.ShimmerFrameLayout
 
 class HomeParentItemAdapterPreview(
     private val viewModel: HomeViewModel,
@@ -140,11 +143,16 @@ class HomeParentItemAdapterPreview(
             }
         }
 
-        val previewAdapter = HomeScrollAdapter { view, position, item ->
+        val previewAdapter = HomeScrollAdapter({ view, position, item ->
             viewModel.click(
                 LoadClickCallback(0, view, position, item)
             )
-        }
+        }, onImageLoaded = {
+            bannerShimmer?.stopShimmer()
+            bannerShimmer?.isGone = true
+            previewViewpager.isVisible = true
+            previewViewpagerText.isVisible = true
+        })
 
         private val bookmarkAdapter = HomeChildItemAdapter(
             id = "bookmarkAdapter".hashCode(),
@@ -235,6 +243,11 @@ class HomeParentItemAdapterPreview(
             itemView.findViewById(R.id.alternative_account_padding)
 
         private val homeNonePadding: View = itemView.findViewById(R.id.home_none_padding)
+        private val bannerShimmer: ShimmerFrameLayout? = itemView.findViewById(R.id.home_banner_shimmer)
+        private val bannerButtons: View? = itemView.findViewById(R.id.home_preview_title_holder)
+        private val bannerPlay: View? = itemView.findViewById(R.id.home_preview_play)
+        private val bannerInfo: View? = itemView.findViewById(R.id.home_preview_info)
+        private val bannerBookmark: View? = itemView.findViewById(R.id.home_preview_bookmark)
 
         fun onSelect(item: LoadResponse, position: Int) {
             (binding as? FragmentHomeHeadTvBinding)?.apply {
@@ -418,6 +431,10 @@ class HomeParentItemAdapterPreview(
             )
 
             fixPaddingStatusbarMargin(topPadding)
+            // Ensure status bar padding is fixed immediately to prevent "uplift" shifts
+            if (isLayout(PHONE)) {
+                fixPaddingStatusbarView(homeNonePadding)
+            }
 
             for ((chip, watch) in toggleList) {
                 chip.isChecked = false
@@ -463,11 +480,11 @@ class HomeParentItemAdapterPreview(
                 } else false
             }
 
-            alternateHeadProfilePicCard?.setOnLongClickListener {
-                showAccountEditBox(it.context)
+            alternateHeadProfilePicCard?.setOnLongClickListener { v ->
+                showAccountEditBox(v.context)
             }
-            headProfilePicCard?.setOnLongClickListener {
-                showAccountEditBox(it.context)
+            headProfilePicCard?.setOnLongClickListener { v ->
+                showAccountEditBox(v.context)
             }
 
             alternateHeadProfilePicCard?.setOnClickListener {
@@ -545,40 +562,30 @@ class HomeParentItemAdapterPreview(
         }
 
         private fun updatePreview(preview: Resource<Pair<Boolean, List<LoadResponse>>>) {
-            if (preview is Resource.Success) {
-                homeNonePadding.apply {
-                    val params = layoutParams
-                    params.height = 0
-                    layoutParams = params
-                }
-            } else fixPaddingStatusbarView(homeNonePadding)
-
             when (preview) {
                 is Resource.Success -> {
+                    // Shimmer is hidden by onImageLoaded callback in the adapter 
+                    // to ensure a perfect 1:1 replacement with no black flash.
+                    
                     previewAdapter.submitList(preview.value.second)
                     previewAdapter.hasMoreItems = preview.value.first
-                    /*if (!.setItems(
-                            preview.value.second,
-                            preview.value.first
-                        )
-                    ) {
-                        // this might seam weird and useless, however this prevents a very weird andrid bug were the viewpager is not rendered properly
-                        // I have no idea why that happens, but this is my ducktape solution
-                        previewViewpager.setCurrentItem(0, false)
-                        previewViewpager.beginFakeDrag()
-                        previewViewpager.fakeDragBy(1f)
-                        previewViewpager.endFakeDrag()
-                        previewCallback.onPageSelected(0)
-                        //previewHeader.isVisible = true
-                    }*/
 
-                    previewViewpager.isVisible = true
-                    previewViewpagerText.isVisible = true
                     alternativeAccountPadding?.isVisible = false
                     (binding as? FragmentHomeHeadTvBinding)?.apply {
                         homePreviewInfoBtt.isVisible = true
+                        homePreviewInfoBtt.isEnabled = true
                     }
-                    // Explicitly bind the current item to ensure instant loading
+                    
+                    // Show banner and reveal buttons
+                    // We set visible immediately in Success to ensure images load
+                    // even if onImageLoaded hasn't triggered yet (e.g. from cache)
+                    previewViewpager.isVisible = true
+                    previewViewpagerText.isVisible = true
+                    bannerButtons?.isVisible = true
+                    bannerPlay?.isEnabled = true
+                    bannerInfo?.isEnabled = true
+                    bannerBookmark?.isEnabled = true
+                    
                     val currentPos = previewViewpager.currentItem
                     val item = preview.value.second.getOrNull(currentPos)
                     if (item != null) {
@@ -586,16 +593,51 @@ class HomeParentItemAdapterPreview(
                     }
                 }
 
+                is Resource.Loading -> {
+                    if (previewAdapter.itemCount == 0) {
+                        bannerShimmer?.startShimmer()
+                        bannerShimmer?.isVisible = true
+                        previewViewpager.isInvisible = true
+                        
+                        // FIX: Ensure alternative account padding is hidden during loading to prevent uplift
+                        alternativeAccountPadding?.isVisible = false
+                        
+                        // Keep buttons visible but disabled to preserve layout and prevent flicker
+                        bannerButtons?.isVisible = true
+                        bannerPlay?.isEnabled = false
+                        bannerInfo?.isEnabled = false
+                        bannerBookmark?.isEnabled = false
+                        
+                        // On TV, this is the text overlay/info button
+                        (binding as? FragmentHomeHeadTvBinding)?.apply {
+                            homePreviewInfoBtt.isVisible = true
+                            homePreviewInfoBtt.isEnabled = false
+                        }
+
+                        // On TV, this is the text overlay, hide it until we have a title/desc
+                        if (!isLayout(PHONE)) {
+                            previewViewpagerText.isInvisible = true
+                        } else {
+                            previewViewpagerText.isVisible = true
+                        }
+                    }
+                }
+
                 else -> {
+                    bannerShimmer?.stopShimmer()
+                    bannerShimmer?.isVisible = false
+
                     previewAdapter.submitList(listOf())
                     previewViewpager.setCurrentItem(0, false)
                     previewViewpager.isVisible = false
+                    
+                    bannerButtons?.isVisible = false
                     previewViewpagerText.isVisible = false
+
                     alternativeAccountPadding?.isVisible = true
                     (binding as? FragmentHomeHeadTvBinding)?.apply {
                         homePreviewInfoBtt.isVisible = false
                     }
-                    //previewHeader.isVisible = false
                 }
             }
         }

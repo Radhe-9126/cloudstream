@@ -72,7 +72,7 @@ open class ParentItemAdapter(
         list: Collection<HomeViewModel.ExpandableHomepageList>?,
         commitCallback: Runnable?
     ) {
-        super.submitList(list?.sortedBy { it.list.list.isEmpty() }, commitCallback)
+        super.submitList(list, commitCallback)
     }
 
     override fun onUpdateContent(
@@ -82,7 +82,16 @@ open class ParentItemAdapter(
     ) {
         val binding = holder.view
         if (binding !is HomepageParentBinding) return
-        (binding.homeChildRecyclerview.adapter as? HomeChildItemAdapter)?.submitList(item.list.list)
+        val info = item.list
+        (binding.homeChildRecyclerview.adapter as? HomeChildItemAdapter)?.apply {
+            hasNext = item.hasNext
+            submitList(info.list)
+        }
+        if (isLayout(PHONE)) {
+            binding.homeChildMoreInfo.setOnClickListener {
+                moreInfoClickCallback.invoke(item)
+            }
+        }
     }
 
     override fun onBindContent(

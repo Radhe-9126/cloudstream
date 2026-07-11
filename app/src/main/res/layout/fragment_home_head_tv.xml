@@ -16,7 +16,8 @@
 
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content">
+        android:layout_height="400dp"
+        android:minHeight="400dp">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -49,14 +50,51 @@
 
                 app:cardCornerRadius="@dimen/rounded_image_radius">
 
-                <androidx.viewpager2.widget.ViewPager2
-                    android:id="@+id/home_preview_viewpager"
+                <FrameLayout
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:descendantFocusability="blocksDescendants"
-                    android:orientation="horizontal">
+                    android:background="?attr/primaryBlackBackground">
 
-                </androidx.viewpager2.widget.ViewPager2>
+                    <com.facebook.shimmer.ShimmerFrameLayout
+                        android:id="@+id/home_banner_shimmer"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:visibility="visible"
+                        app:shimmer_auto_start="true"
+                        app:shimmer_base_alpha="0.2"
+                        app:shimmer_duration="@integer/loading_time"
+                        app:shimmer_highlight_alpha="0.3">
+
+                        <FrameLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent">
+
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:background="@color/grayShimmer" />
+
+                            <ImageView
+                                android:layout_width="150dp"
+                                android:layout_height="150dp"
+                                android:layout_gravity="center"
+                                android:alpha="0.1"
+                                android:contentDescription="@string/app_name"
+                                android:src="@drawable/ic_baseline_play_arrow_24"
+                                app:tint="@color/white" />
+                        </FrameLayout>
+                    </com.facebook.shimmer.ShimmerFrameLayout>
+
+                    <androidx.viewpager2.widget.ViewPager2
+                        android:id="@+id/home_preview_viewpager"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:descendantFocusability="blocksDescendants"
+                        android:orientation="horizontal"
+                        android:visibility="gone">
+
+                    </androidx.viewpager2.widget.ViewPager2>
+                </FrameLayout>
 
                 <LinearLayout
                     android:id="@+id/home_preview_viewpager_text"
