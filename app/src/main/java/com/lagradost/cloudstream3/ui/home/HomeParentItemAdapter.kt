@@ -72,7 +72,7 @@ open class ParentItemAdapter(
         list: Collection<HomeViewModel.ExpandableHomepageList>?,
         commitCallback: Runnable?
     ) {
-        super.submitList(list?.sortedBy { it.list.list.isEmpty() }, commitCallback)
+        super.submitList(list, commitCallback)
     }
 
     override fun onUpdateContent(

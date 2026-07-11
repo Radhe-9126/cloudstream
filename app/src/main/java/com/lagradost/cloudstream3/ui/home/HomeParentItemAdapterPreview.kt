@@ -141,11 +141,16 @@ class HomeParentItemAdapterPreview(
             }
         }
 
-        val previewAdapter = HomeScrollAdapter { view, position, item ->
+        val previewAdapter = HomeScrollAdapter({ view, position, item ->
             viewModel.click(
                 LoadClickCallback(0, view, position, item)
             )
-        }
+        }, onImageLoaded = {
+            bannerShimmer?.stopShimmer()
+            bannerShimmer?.isGone = true
+            previewViewpager.isVisible = true
+            previewViewpagerText.isVisible = true
+        })
 
         private val bookmarkAdapter = HomeChildItemAdapter(
             id = "bookmarkAdapter".hashCode(),
@@ -557,19 +562,24 @@ class HomeParentItemAdapterPreview(
 
             when (preview) {
                 is Resource.Success -> {
-                    bannerShimmer?.stopShimmer()
-                    bannerShimmer?.isGone = true
+                    // We don't hide shimmer here, it's done in onImageLoaded of the adapter
+                    // to ensure a smooth transition without a black flash.
 
-                    previewViewpager.isVisible = true
-                    previewViewpagerText.isVisible = true
-                    
+                    val firstLoad = previewAdapter.itemCount == 0
                     previewAdapter.submitList(preview.value.second)
                     previewAdapter.hasMoreItems = preview.value.first
 
+                    // If we already have items (e.g. from cache), keep it visible
+                    if (!firstLoad) {
+                        previewViewpager.isVisible = true
+                        previewViewpagerText.isVisible = true
+                    }
+
                     alternativeAccountPadding?.isVisible = false
                     (binding as? FragmentHomeHeadTvBinding)?.apply {
-                        homePreviewInfoBtt.isVisible = true
+                        if (!firstLoad) homePreviewInfoBtt.isVisible = true
                     }
+
                     // Explicitly bind the current item to ensure instant loading
                     val currentPos = previewViewpager.currentItem
                     val item = preview.value.second.getOrNull(currentPos)

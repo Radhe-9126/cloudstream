@@ -17,6 +17,9 @@ import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainActivity
 import com.lagradost.cloudstream3.SearchResponse
+import com.lagradost.cloudstream3.TvType
+import com.lagradost.cloudstream3.SearchQuality
+import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.mvvm.Resource
 import com.lagradost.cloudstream3.mvvm.debugAssert
@@ -153,6 +156,18 @@ class HomeViewModel : ViewModel() {
         onGoingLoad = load(api)
     }
 
+    data class LoadingSearchResponse(
+        @JsonProperty("name") override val name: String = "Loading...",
+        @JsonProperty("url") override val url: String = "loading://",
+        @JsonProperty("apiName") override val apiName: String = "",
+        @JsonProperty("type") override var type: TvType? = null,
+        @JsonProperty("posterUrl") override var posterUrl: String? = null,
+        @JsonProperty("posterHeaders") override var posterHeaders: Map<String, String>? = null,
+        @JsonProperty("id") override var id: Int? = -1,
+        @JsonProperty("quality") override var quality: SearchQuality? = null,
+        @JsonProperty("score") override var score: Score? = null
+    ) : SearchResponse
+
     data class ExpandableHomepageList(
         @JsonProperty("list") var list: HomePageList,
         @JsonProperty("currentPage") var currentPage: Int,
@@ -273,7 +288,8 @@ class HomeViewModel : ViewModel() {
             expandable.putAll(cachedPage)
             _page.postValue(Resource.Success(cachedPage))
         } else {
-            _page.postValue(Resource.Loading())
+            // Do NOT post Resource.Loading() here to prevent flickering
+            // load() will handle posting the initial skeleton state
             expandable.clear()
         }
     }
@@ -300,6 +316,31 @@ class HomeViewModel : ViewModel() {
         val bannerCacheKey = "${api.name}/$HOME_BANNER_CACHE"
         val pageCacheKey = "${api.name}/$HOME_PAGE_CACHE"
         val homeResults = arrayOfNulls<List<ExpandableHomepageList>>(mainPageData.size)
+
+        // Pre-fill from cache or create skeleton placeholders for at least 3 sections
+        mainPageData.forEachIndexed { index, pageData ->
+            val cached = expandable[pageData.name]
+            if (cached != null) {
+                homeResults[index] = listOf(cached)
+            } else if (index < 3) {
+                // Create a skeleton row if we don't have cache for the first 3 sections
+                val skeletons = List(6) { i -> LoadingSearchResponse(url = "loading://${pageData.name}/$i") }
+                val skeleton = ExpandableHomepageList(HomePageList(pageData.name, skeletons, pageData.horizontalImages), 1, false)
+                homeResults[index] = listOf(skeleton)
+            }
+        }
+
+        // Immediately post the initial state (cache + skeletons)
+        val initialMap = LinkedHashMap<String, ExpandableHomepageList>()
+        homeResults.forEach { list ->
+            list?.forEach { item ->
+                initialMap[item.list.name] = item
+            }
+        }
+        if (initialMap.isNotEmpty()) {
+            _page.postValue(Resource.Success(initialMap))
+        }
+
         val allItems = mutableListOf<SearchResponse>()
         var previewJob: Job? = null
         val syncLock = Any()
@@ -330,7 +371,12 @@ class HomeViewModel : ViewModel() {
                                 orderedMap[item.list.name] = item
                             }
                         }
-                        _page.postValue(Resource.Success(orderedMap))
+                        
+                        // Only post success if we have at least some items to show
+                        if (orderedMap.isNotEmpty()) {
+                            _page.postValue(Resource.Success(orderedMap))
+                        }
+
                         setKey(pageCacheKey, orderedMap)
 
                         allItems.addAll(newItems)
