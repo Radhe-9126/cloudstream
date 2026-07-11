@@ -38,8 +38,8 @@ import java.io.IOException
 import java.io.InputStreamReader
 
 object InAppUpdater {
-    private const val GITHUB_USER_NAME = "recloudstream"
-    private const val GITHUB_REPO = "cloudstream"
+    private const val GITHUB_USER_NAME = "Radhe-9126"
+    private const val GITHUB_REPO = "CloudX"
 
     private const val PRERELEASE_PACKAGE_NAME = "com.lagradost.cloudstream3.prerelease"
     private const val LOG_TAG = "InAppUpdater"
@@ -117,7 +117,10 @@ object InAppUpdater {
         }).toList()
 
         val found = foundList.lastOrNull()
-        val foundAsset = found?.assets?.getOrNull(0)
+        val foundAsset = found?.assets?.firstOrNull {
+            it.contentType == "application/vnd.android.package-archive" &&
+                    it.name.startsWith("CloudX")
+        }
         val foundVersion = foundAsset?.name?.let { versionRegex.find(it) }
 
         if (foundVersion == null) {
