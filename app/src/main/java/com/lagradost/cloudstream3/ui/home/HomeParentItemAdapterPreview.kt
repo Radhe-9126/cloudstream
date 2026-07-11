@@ -576,12 +576,15 @@ class HomeParentItemAdapterPreview(
                         homePreviewInfoBtt.isEnabled = true
                     }
                     
-                    // Reveal content-dependent UI
+                    // Show banner and reveal buttons
+                    // We set visible immediately in Success to ensure images load
+                    // even if onImageLoaded hasn't triggered yet (e.g. from cache)
+                    previewViewpager.isVisible = true
+                    previewViewpagerText.isVisible = true
                     bannerButtons?.isVisible = true
                     bannerPlay?.isEnabled = true
                     bannerInfo?.isEnabled = true
                     bannerBookmark?.isEnabled = true
-                    previewViewpagerText.isVisible = true
                     
                     val currentPos = previewViewpager.currentItem
                     val item = preview.value.second.getOrNull(currentPos)
@@ -596,7 +599,7 @@ class HomeParentItemAdapterPreview(
                         bannerShimmer?.isVisible = true
                         previewViewpager.isInvisible = true
                         
-                        // FIX: Hide alternative account padding during loading to prevent uplift
+                        // FIX: Ensure alternative account padding is hidden during loading to prevent uplift
                         alternativeAccountPadding?.isVisible = false
                         
                         // Keep buttons visible but disabled to preserve layout and prevent flicker

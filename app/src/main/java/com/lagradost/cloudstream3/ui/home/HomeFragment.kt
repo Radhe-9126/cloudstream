@@ -856,8 +856,14 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
                 return@observeNullable
             }
 
-            // don't recreate
+            // If dialog already exists, update its content instead of recreating
             if (bottomSheetDialog != null) {
+                val (items, _) = item
+                val recycle = bottomSheetDialog?.findViewById<RecyclerView>(R.id.home_expanded_recycler)
+                (recycle?.adapter as? SearchAdapter)?.apply {
+                    hasNext = items.hasNext
+                    submitList(items.list.list)
+                }
                 return@observeNullable
             }
 

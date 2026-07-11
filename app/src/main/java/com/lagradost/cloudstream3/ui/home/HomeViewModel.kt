@@ -169,9 +169,9 @@ class HomeViewModel : ViewModel() {
     ) : SearchResponse
 
     data class ExpandableHomepageList(
-        @JsonProperty("list") var list: HomePageList,
-        @JsonProperty("currentPage") var currentPage: Int,
-        @JsonProperty("hasNext") var hasNext: Boolean,
+        @JsonProperty("list") val list: HomePageList,
+        @JsonProperty("currentPage") val currentPage: Int,
+        @JsonProperty("hasNext") val hasNext: Boolean,
     )
 
     private val expandable = ConcurrentHashMap<String, ExpandableHomepageList>()
@@ -199,22 +199,29 @@ class HomeViewModel : ViewModel() {
                     next.value.filterNotNull().forEach { main ->
                         main.items.forEach { newList ->
                             val key = newList.name
-                            expandable[key]?.apply {
-                                hasNext = main.hasNext
-                                currentPage = nextPage
+                            expandable[key]?.let { innerCurrent ->
+                                val updatedList = innerCurrent.list.copy(
+                                    list = (innerCurrent.list.list + newList.list).distinctBy { it.url }
+                                )
+                                val updated = innerCurrent.copy(
+                                    hasNext = main.hasNext,
+                                    currentPage = nextPage,
+                                    list = updatedList
+                                )
+                                expandable[key] = updated
 
-                                debugWarning({ newList.list.any { outer -> this.list.list.any { it.url == outer.url } } }) {
-                                    "Expanded contained an item that was previously already in the list\n${list.name} = ${this.list.list}\n${newList.name} = ${newList.list}"
+                                // Update popup if it's currently showing this category
+                                val currentPopup = _popup.value
+                                if (currentPopup != null && currentPopup.first.list.name == key) {
+                                    _popup.postValue(updated to currentPopup.second)
                                 }
-
-                                this.list.list = (this.list.list + newList.list).distinctBy { it.url }
                             } ?: debugWarning {
                                 "Expanded an item not in main load named $key, current list is ${expandable.keys}"
                             }
                         }
                     }
                 } else {
-                    current.hasNext = false
+                    expandable[name] = current.copy(hasNext = false)
                 }
             }
             _page.postValue(Resource.Success(expandable))
@@ -386,9 +393,17 @@ class HomeViewModel : ViewModel() {
                         home.items.forEach { list ->
                             val filteredList = context?.filterHomePageListByFilmQuality(list) ?: list
                             val expandableList = ExpandableHomepageList(filteredList, 1, home.hasNext)
+                            
                             expandable[list.name] = expandableList
+                            
                             newItems.addAll(filteredList.list)
                             currentResults.add(expandableList)
+
+                            // Update popup if it's currently showing this category
+                            val currentPopup = _popup.value
+                            if (currentPopup != null && currentPopup.first.list.name == list.name) {
+                                _popup.postValue(expandableList to currentPopup.second)
+                            }
                         }
                     }
 
@@ -573,6 +588,7 @@ class HomeViewModel : ViewModel() {
         val lastApi = DataStoreHelper.currentHomePage
         if (lastApi != null && lastApi != noneApi.name) {
             _apiName.value = lastApi
+            _preview.value = Resource.Loading()
             loadCache(lastApi)
         }
     }
@@ -619,13 +635,6 @@ class HomeViewModel : ViewModel() {
         fromUI: Boolean = false
     ) =
         ioSafe {
-            // If we have an api name, load cache/skeletons immediately on the background thread
-            // but before the main load logic to ensure they appear ASAP.
-            // if (preferredApiName != null && preferredApiName != noneApi.name) {
-            //    _apiName.postValue(preferredApiName)
-            //    loadCache(preferredApiName)
-            // }
-
             val currentPage = page.value
             val currentLoading = isCurrentlyLoadingName
 
@@ -640,7 +649,8 @@ class HomeViewModel : ViewModel() {
                 return@ioSafe
             }
 
-            // Only load cache/skeletons if we don't have real data or are forcing a reload
+            // If we have an api name, load cache/skeletons immediately on the background thread
+            // but before the main load logic to ensure they appear ASAP.
             if (preferredApiName != null && preferredApiName != noneApi.name) {
                 _apiName.postValue(preferredApiName)
                 loadCache(preferredApiName)
