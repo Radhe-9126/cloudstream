@@ -11,6 +11,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
 import androidx.core.view.isGone
+import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.findViewTreeLifecycleOwner
@@ -570,16 +571,21 @@ class HomeParentItemAdapterPreview(
                     previewAdapter.hasMoreItems = preview.value.first
 
                     // If we already have items (e.g. from cache), keep it visible
-                    if (!firstLoad) {
+                    // Use isInvisible instead of isGone so images start loading
+                    if (firstLoad) {
+                        previewViewpager.isInvisible = true
+                        previewViewpagerText.isInvisible = true
+                    } else {
                         previewViewpager.isVisible = true
                         previewViewpagerText.isVisible = true
                     }
 
                     alternativeAccountPadding?.isVisible = false
                     (binding as? FragmentHomeHeadTvBinding)?.apply {
-                        if (!firstLoad) homePreviewInfoBtt.isVisible = true
+                        if (firstLoad) homePreviewInfoBtt.isInvisible = true
+                        else homePreviewInfoBtt.isVisible = true
                     }
-
+                    
                     // Explicitly bind the current item to ensure instant loading
                     val currentPos = previewViewpager.currentItem
                     val item = preview.value.second.getOrNull(currentPos)
@@ -592,8 +598,9 @@ class HomeParentItemAdapterPreview(
                     if (previewAdapter.itemCount == 0) {
                         bannerShimmer?.startShimmer()
                         bannerShimmer?.isVisible = true
-                        previewViewpager.isGone = true
-                        previewViewpagerText.isGone = true
+                        // Use isInvisible so it's ready in the layout but not shown
+                        previewViewpager.isInvisible = true
+                        previewViewpagerText.isInvisible = true
                     }
                 }
 

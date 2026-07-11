@@ -176,7 +176,7 @@ class HomeViewModel : ViewModel() {
 
     private val expandable = ConcurrentHashMap<String, ExpandableHomepageList>()
     private val _page =
-        MutableLiveData<Resource<Map<String, ExpandableHomepageList>>>(Resource.Loading())
+        MutableLiveData<Resource<Map<String, ExpandableHomepageList>>>()
     val page: LiveData<Resource<Map<String, ExpandableHomepageList>>> = _page
 
     val lock: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -288,9 +288,15 @@ class HomeViewModel : ViewModel() {
             expandable.putAll(cachedPage)
             _page.postValue(Resource.Success(cachedPage))
         } else {
-            // Do NOT post Resource.Loading() here to prevent flickering
-            // load() will handle posting the initial skeleton state
+            // Post generic skeletons immediately if no cache
+            val genericNames = listOf("Trending", "Popular", "Top Rated")
+            val skeletons = genericNames.associateWith { name ->
+                val response = List(6) { i -> LoadingSearchResponse(url = "loading://$name/$i") }
+                ExpandableHomepageList(HomePageList(name, response), 1, false)
+            }
             expandable.clear()
+            expandable.putAll(skeletons)
+            _page.postValue(Resource.Success(skeletons))
         }
     }
 
@@ -315,17 +321,27 @@ class HomeViewModel : ViewModel() {
         val mainPageData = currentRepo.mainPage
         val bannerCacheKey = "${api.name}/$HOME_BANNER_CACHE"
         val pageCacheKey = "${api.name}/$HOME_PAGE_CACHE"
-        val homeResults = arrayOfNulls<List<ExpandableHomepageList>>(mainPageData.size)
+        val homeResults = arrayOfNulls<List<ExpandableHomepageList>>(maxOf(3, mainPageData.size))
 
         // Pre-fill from cache or create skeleton placeholders for at least 3 sections
-        mainPageData.forEachIndexed { index, pageData ->
-            val cached = expandable[pageData.name]
-            if (cached != null) {
-                homeResults[index] = listOf(cached)
-            } else if (index < 3) {
-                // Create a skeleton row if we don't have cache for the first 3 sections
-                val skeletons = List(6) { i -> LoadingSearchResponse(url = "loading://${pageData.name}/$i") }
-                val skeleton = ExpandableHomepageList(HomePageList(pageData.name, skeletons, pageData.horizontalImages), 1, false)
+        if (mainPageData.isNotEmpty()) {
+            mainPageData.forEachIndexed { index, pageData ->
+                val cached = expandable[pageData.name]
+                if (cached != null) {
+                    homeResults[index] = listOf(cached)
+                } else if (index < 3) {
+                    // Create a skeleton row if we don't have cache for the first 3 sections
+                    val skeletons = List(6) { i -> LoadingSearchResponse(url = "loading://${pageData.name}/$i") }
+                    val skeleton = ExpandableHomepageList(HomePageList(pageData.name, skeletons, pageData.horizontalImages), 1, false)
+                    homeResults[index] = listOf(skeleton)
+                }
+            }
+        } else {
+            // No main page data yet, show generic skeletons
+            val genericNames = listOf("Trending", "Popular", "Top Rated")
+            genericNames.forEachIndexed { index, name ->
+                val skeletons = List(6) { i -> LoadingSearchResponse(url = "loading://$name/$i") }
+                val skeleton = ExpandableHomepageList(HomePageList(name, skeletons), 1, false)
                 homeResults[index] = listOf(skeleton)
             }
         }
@@ -362,7 +378,10 @@ class HomeViewModel : ViewModel() {
                     }
 
                     synchronized(syncLock) {
-                        homeResults[index] = currentResults
+                        // Update homeResults at the correct index
+                        if (index < homeResults.size) {
+                            homeResults[index] = currentResults
+                        }
 
                         // Build ordered map for UI to prevent reshuffling
                         val orderedMap = LinkedHashMap<String, ExpandableHomepageList>()
@@ -372,6 +391,13 @@ class HomeViewModel : ViewModel() {
                             }
                         }
                         
+                        // Handle potential extra items not in the initial homeResults structure
+                        expandable.forEach { (name, list) ->
+                            if (!orderedMap.containsKey(name)) {
+                                orderedMap[name] = list
+                            }
+                        }
+
                         // Only post success if we have at least some items to show
                         if (orderedMap.isNotEmpty()) {
                             _page.postValue(Resource.Success(orderedMap))
@@ -524,6 +550,13 @@ class HomeViewModel : ViewModel() {
         MainActivity.mainPluginsLoadedEvent += ::afterMainPluginsLoaded
         MainActivity.reloadHomeEvent += ::reloadHome
         MainActivity.reloadAccountEvent += ::reloadAccount
+
+        // Immediate cache/skeleton load on launch
+        val lastApi = DataStoreHelper.currentHomePage
+        if (lastApi != null && lastApi != noneApi.name) {
+            _apiName.value = lastApi
+            loadCache(lastApi)
+        }
     }
 
     override fun onCleared() {
@@ -568,13 +601,14 @@ class HomeViewModel : ViewModel() {
         fromUI: Boolean = false
     ) =
         ioSafe {
-            //println("trying to load $preferredApiName")
-            // Since plugins are loaded in stages this function can get called multiple times.
-            // The issue with this is that the homepage may be fetched multiple times while the first request is loading
-            // api?.let { expandable[it.name]?.list?.list?.isNotEmpty() } == true
-            val currentPage = page.value
+            // If we have an api name, load cache/skeletons immediately on the background thread
+            // but before the main load logic to ensure they appear ASAP.
+            if (preferredApiName != null && preferredApiName != noneApi.name) {
+                _apiName.postValue(preferredApiName)
+                loadCache(preferredApiName)
+            }
 
-            // if we don't need to reload and we have a valid homepage or currently loading the same thing then return
+            val currentPage = page.value
             val currentLoading = isCurrentlyLoadingName
             if (!forceReload && (currentPage is Resource.Success && currentPage.value.isNotEmpty() || (currentLoading != null && currentLoading == preferredApiName))) {
                 return@ioSafe
@@ -582,6 +616,7 @@ class HomeViewModel : ViewModel() {
 
             val api = getApiFromNameNull(preferredApiName)
             if (preferredApiName == null || preferredApiName == noneApi.name) {
+                // ...
                 // just set to random
                 if (fromUI) DataStoreHelper.currentHomePage = noneApi.name
                 loadAndCancel(noneApi)
@@ -602,8 +637,7 @@ class HomeViewModel : ViewModel() {
                 if (PluginManager.loadedOnlinePlugins || PluginManager.isSafeMode()) {
                     loadAndCancel(noneApi)
                 } else {
-                    _apiName.postValue(preferredApiName)
-                    loadCache(preferredApiName)
+                    // Cache/Skeletons already loaded above
                 }
             } else {
                 // if the api is found, then set it to it and save key
