@@ -830,15 +830,20 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
                     }
 
                     is Resource.Loading -> {
-                        homeLoadingShimmer.startShimmer()
-                        homeLoading.isVisible = true
-                        homeLoadingError.isVisible = false
-                        homeMasterRecycler.isInvisible = true
-                        (homeMasterRecycler.adapter as? ParentItemAdapter)?.apply {
-                            submitList(null)
-                            clearState()
+                        val adapter = homeMasterRecycler.adapter as? ParentItemAdapter
+                        // Always keep recycler visible if we have a banner header
+                        // so that the header shimmer/placeholder can be shown.
+                        if (adapter != null && adapter.headers > 0) {
+                            homeLoading.isVisible = false
+                            homeLoadingError.isVisible = false
+                            homeMasterRecycler.isVisible = true
+                            homeLoadingShimmer.stopShimmer()
+                        } else if (adapter == null || adapter.itemCount == 0) {
+                            homeLoadingShimmer.startShimmer()
+                            homeLoading.isVisible = true
+                            homeLoadingError.isVisible = false
+                            homeMasterRecycler.isInvisible = true
                         }
-                        //home_loaded?.isVisible = false
                     }
                 }
             }

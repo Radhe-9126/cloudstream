@@ -61,6 +61,7 @@ import com.lagradost.cloudstream3.utils.UIHelper.fixPaddingStatusbarView
 import com.lagradost.cloudstream3.utils.UIHelper.populateChips
 import androidx.core.graphics.toColorInt
 import com.lagradost.cloudstream3.ui.setRecycledViewPool
+import com.facebook.shimmer.ShimmerFrameLayout
 
 class HomeParentItemAdapterPreview(
     private val viewModel: HomeViewModel,
@@ -235,6 +236,7 @@ class HomeParentItemAdapterPreview(
             itemView.findViewById(R.id.alternative_account_padding)
 
         private val homeNonePadding: View = itemView.findViewById(R.id.home_none_padding)
+        private val bannerShimmer: ShimmerFrameLayout? = itemView.findViewById(R.id.home_banner_shimmer)
 
         fun onSelect(item: LoadResponse, position: Int) {
             (binding as? FragmentHomeHeadTvBinding)?.apply {
@@ -555,25 +557,15 @@ class HomeParentItemAdapterPreview(
 
             when (preview) {
                 is Resource.Success -> {
-                    previewAdapter.submitList(preview.value.second)
-                    previewAdapter.hasMoreItems = preview.value.first
-                    /*if (!.setItems(
-                            preview.value.second,
-                            preview.value.first
-                        )
-                    ) {
-                        // this might seam weird and useless, however this prevents a very weird andrid bug were the viewpager is not rendered properly
-                        // I have no idea why that happens, but this is my ducktape solution
-                        previewViewpager.setCurrentItem(0, false)
-                        previewViewpager.beginFakeDrag()
-                        previewViewpager.fakeDragBy(1f)
-                        previewViewpager.endFakeDrag()
-                        previewCallback.onPageSelected(0)
-                        //previewHeader.isVisible = true
-                    }*/
+                    bannerShimmer?.stopShimmer()
+                    bannerShimmer?.isGone = true
 
                     previewViewpager.isVisible = true
                     previewViewpagerText.isVisible = true
+                    
+                    previewAdapter.submitList(preview.value.second)
+                    previewAdapter.hasMoreItems = preview.value.first
+
                     alternativeAccountPadding?.isVisible = false
                     (binding as? FragmentHomeHeadTvBinding)?.apply {
                         homePreviewInfoBtt.isVisible = true
@@ -586,7 +578,19 @@ class HomeParentItemAdapterPreview(
                     }
                 }
 
+                is Resource.Loading -> {
+                    if (previewAdapter.itemCount == 0) {
+                        bannerShimmer?.startShimmer()
+                        bannerShimmer?.isVisible = true
+                        previewViewpager.isGone = true
+                        previewViewpagerText.isGone = true
+                    }
+                }
+
                 else -> {
+                    bannerShimmer?.stopShimmer()
+                    bannerShimmer?.isVisible = false
+
                     previewAdapter.submitList(listOf())
                     previewViewpager.setCurrentItem(0, false)
                     previewViewpager.isVisible = false
@@ -595,7 +599,6 @@ class HomeParentItemAdapterPreview(
                     (binding as? FragmentHomeHeadTvBinding)?.apply {
                         homePreviewInfoBtt.isVisible = false
                     }
-                    //previewHeader.isVisible = false
                 }
             }
         }

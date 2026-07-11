@@ -1,6 +1,5 @@
 package com.lagradost.cloudstream3.ui.home
 
-import android.os.Build
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -42,6 +41,8 @@ import com.lagradost.cloudstream3.utils.AppContextUtils.filterSearchResultByFilm
 import com.lagradost.cloudstream3.utils.AppContextUtils.loadResult
 import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
 import com.lagradost.cloudstream3.utils.DataStoreHelper
+import com.lagradost.cloudstream3.utils.HOME_BANNER_CACHE
+import com.lagradost.cloudstream3.utils.HOME_PAGE_CACHE
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getAllWatchStateIds
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getBookmarkedData
 import com.lagradost.cloudstream3.utils.DataStoreHelper.getCurrentAccount
@@ -53,6 +54,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import com.fasterxml.jackson.annotation.JsonProperty
 import java.util.EnumSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -151,9 +154,9 @@ class HomeViewModel : ViewModel() {
     }
 
     data class ExpandableHomepageList(
-        var list: HomePageList,
-        var currentPage: Int,
-        var hasNext: Boolean,
+        @JsonProperty("list") var list: HomePageList,
+        @JsonProperty("currentPage") var currentPage: Int,
+        @JsonProperty("hasNext") var hasNext: Boolean,
     )
 
     private val expandable = ConcurrentHashMap<String, ExpandableHomepageList>()
@@ -247,9 +250,35 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    private fun load(api: MainAPI): Job = ioSafe {
-        val totalStart = System.currentTimeMillis()
+    private fun loadCache(apiName: String) {
+        val bannerCacheKey = "$apiName/$HOME_BANNER_CACHE"
+        val pageCacheKey = "$apiName/$HOME_PAGE_CACHE"
 
+        val cachedBanner = getKey<List<LoadResponse>>(bannerCacheKey)
+        if (!cachedBanner.isNullOrEmpty()) {
+            previewResponses.clear()
+            previewResponses.addAll(cachedBanner)
+            previewResponsesAdded.clear()
+            previewResponsesAdded.addAll(cachedBanner.map { it.url })
+            _preview.postValue(Resource.Success(true to previewResponses))
+        } else {
+            _preview.postValue(Resource.Loading())
+            previewResponses.clear()
+            previewResponsesAdded.clear()
+        }
+
+        val cachedPage = getKey<Map<String, ExpandableHomepageList>>(pageCacheKey)
+        if (!cachedPage.isNullOrEmpty()) {
+            expandable.clear()
+            expandable.putAll(cachedPage)
+            _page.postValue(Resource.Success(cachedPage))
+        } else {
+            _page.postValue(Resource.Loading())
+            expandable.clear()
+        }
+    }
+
+    private fun load(api: MainAPI): Job = ioSafe {
         repo = APIRepository(api)
         val currentRepo = this@HomeViewModel.repo ?: return@ioSafe
 
@@ -262,16 +291,14 @@ class HomeViewModel : ViewModel() {
             return@ioSafe
         }
 
-        _page.postValue(Resource.Loading())
-        _preview.postValue(Resource.Loading())
+        loadCache(api.name)
+
         // cancel the current preview expand as that is no longer relevant
         addJob?.cancel()
 
-        expandable.clear()
-        previewResponses.clear()
-        previewResponsesAdded.clear()
-
         val mainPageData = currentRepo.mainPage
+        val bannerCacheKey = "${api.name}/$HOME_BANNER_CACHE"
+        val pageCacheKey = "${api.name}/$HOME_PAGE_CACHE"
         val homeResults = arrayOfNulls<List<ExpandableHomepageList>>(mainPageData.size)
         val allItems = mutableListOf<SearchResponse>()
         var previewJob: Job? = null
@@ -304,6 +331,7 @@ class HomeViewModel : ViewModel() {
                             }
                         }
                         _page.postValue(Resource.Success(orderedMap))
+                        setKey(pageCacheKey, orderedMap)
 
                         allItems.addAll(newItems)
                         if (previewJob == null && allItems.isNotEmpty()) {
@@ -316,7 +344,6 @@ class HomeViewModel : ViewModel() {
                             _randomItems.postValue(randomItems)
 
                             previewJob = viewModelScope.launchSafe {
-                                val previewStart = System.currentTimeMillis()
                                 // 1. Load the first item ASAP for instant feedback
                                 if (updatePreviewResponses(
                                         previewResponses,
@@ -325,11 +352,10 @@ class HomeViewModel : ViewModel() {
                                         1
                                     ) > 0
                                 ) {
-                                    _preview.postValue(
-                                        Resource.Success(
-                                            (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
-                                        )
-                                    )
+                                    val data =
+                                        (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                    _preview.postValue(Resource.Success(data))
+                                    setKey(bannerCacheKey, previewResponses.toList())
                                 }
 
                                 // 2. Load 2 more items to have a decent buffer
@@ -340,21 +366,22 @@ class HomeViewModel : ViewModel() {
                                         2
                                     ) > 0
                                 ) {
-                                    _preview.postValue(
-                                        Resource.Success(
-                                            (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
-                                        )
-                                    )
+                                    val data =
+                                        (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                    _preview.postValue(Resource.Success(data))
+                                    setKey(bannerCacheKey, previewResponses.toList())
                                 }
                             }
                         }
                     }
                 }
+
                 is Resource.Failure -> {
                     synchronized(syncLock) {
                         lastFailure = res
                     }
                 }
+
                 else -> Unit
             }
         }
@@ -508,7 +535,7 @@ class HomeViewModel : ViewModel() {
             }
 
             val api = getApiFromNameNull(preferredApiName)
-            if (preferredApiName == noneApi.name) {
+            if (preferredApiName == null || preferredApiName == noneApi.name) {
                 // just set to random
                 if (fromUI) DataStoreHelper.currentHomePage = noneApi.name
                 loadAndCancel(noneApi)
@@ -529,9 +556,8 @@ class HomeViewModel : ViewModel() {
                 if (PluginManager.loadedOnlinePlugins || PluginManager.isSafeMode()) {
                     loadAndCancel(noneApi)
                 } else {
-                    _page.postValue(Resource.Loading())
-                    if (preferredApiName != null)
-                        _apiName.postValue(preferredApiName)
+                    _apiName.postValue(preferredApiName)
+                    loadCache(preferredApiName)
                 }
             } else {
                 // if the api is found, then set it to it and save key
