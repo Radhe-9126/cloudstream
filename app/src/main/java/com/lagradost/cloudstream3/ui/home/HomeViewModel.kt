@@ -168,6 +168,29 @@ class HomeViewModel : ViewModel() {
         @JsonProperty("score") override var score: Score? = null
     ) : SearchResponse
 
+    data class LoadResponsePreview(
+        override var name: String,
+        override var url: String,
+        override var apiName: String,
+        override var type: TvType,
+        override var posterUrl: String?,
+        override var posterHeaders: Map<String, String>? = null,
+        override var year: Int? = null,
+        override var plot: String? = null,
+        override var score: Score? = null,
+        override var tags: List<String>? = null,
+        override var duration: Int? = null,
+        override var trailers: MutableList<com.lagradost.cloudstream3.TrailerData> = mutableListOf(),
+        override var recommendations: List<SearchResponse>? = null,
+        override var actors: List<com.lagradost.cloudstream3.ActorData>? = null,
+        override var comingSoon: Boolean = false,
+        override var syncData: MutableMap<String, String> = mutableMapOf(),
+        override var backgroundPosterUrl: String? = null,
+        override var logoUrl: String? = null,
+        override var contentRating: String? = null,
+        override var uniqueUrl: String = url,
+    ) : LoadResponse
+
     data class ExpandableHomepageList(
         @JsonProperty("list") val list: HomePageList,
         @JsonProperty("currentPage") val currentPage: Int,
@@ -361,11 +384,13 @@ class HomeViewModel : ViewModel() {
         } else {
             // No main page data yet, show generic skeletons
             val genericNames = listOf("Trending", "Popular", "Top Rated")
-            genericNames.forEachIndexed { index, name ->
-                val skeletons = List(6) { i -> LoadingSearchResponse(url = "loading://$name/$i") }
-                val skeleton = ExpandableHomepageList(HomePageList(name, skeletons), 1, false)
-                homeResults[index] = listOf(skeleton)
+            val skeletons = genericNames.associateWith { name ->
+                val response = List(6) { i -> LoadingSearchResponse(url = "loading://$name/$i") }
+                ExpandableHomepageList(HomePageList(name, response), 1, false)
             }
+            expandable.clear()
+            expandable.putAll(skeletons)
+            _page.postValue(Resource.Success(skeletons))
         }
 
         // Immediately post the initial state (cache + skeletons)
@@ -439,7 +464,7 @@ class HomeViewModel : ViewModel() {
                         setKey(pageCacheKey, orderedMap)
 
                         allItems.addAll(newItems)
-                        if (previewJob == null && allItems.isNotEmpty()) {
+                        if (allItems.isNotEmpty()) {
                             val distinctItems = allItems.distinctBy { it.url }
                             val shuffledList = distinctItems.shuffled()
                             val randomItems =
@@ -448,33 +473,54 @@ class HomeViewModel : ViewModel() {
                             currentShuffledList = randomItems
                             _randomItems.postValue(randomItems)
 
-                            previewJob = viewModelScope.launchSafe {
-                                // 1. Load the first 5 items ASAP for instant feedback
-                                if (updatePreviewResponses(
-                                        previewResponses,
-                                        previewResponsesAdded,
-                                        currentShuffledList,
-                                        5
-                                    ) > 0
-                                ) {
-                                    val data =
-                                        (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
-                                    _preview.postValue(Resource.Success(data))
-                                    setKey(bannerCacheKey, previewResponses.toList())
-                                }
+                            // 1. Post Instant Previews from Search Results
+                            // This ensures the banner is populated in milliseconds!
+                            val previews = randomItems.take(10).map {
+                                LoadResponsePreview(
+                                    name = it.name,
+                                    url = it.url,
+                                    apiName = it.apiName,
+                                    type = it.type ?: TvType.Others,
+                                    posterUrl = it.posterUrl,
+                                    posterHeaders = it.posterHeaders,
+                                    score = it.score
+                                )
+                            }
+                            
+                            // Only post previews if we don't have better data in previewResponses yet
+                            if (previewJob == null && previewResponses.isEmpty()) {
+                                _preview.postValue(Resource.Success(true to previews))
+                            }
 
-                                // 2. Load more items in the background
-                                if (updatePreviewResponses(
-                                        previewResponses,
-                                        previewResponsesAdded,
-                                        currentShuffledList,
-                                        5
-                                    ) > 0
-                                ) {
-                                    val data =
-                                        (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
-                                    _preview.postValue(Resource.Success(data))
-                                    setKey(bannerCacheKey, previewResponses.toList())
+                            if (previewJob == null) {
+                                previewJob = viewModelScope.launchSafe {
+                                    // 2. Load the first 5 full metadata items ASAP
+                                    if (updatePreviewResponses(
+                                            previewResponses,
+                                            previewResponsesAdded,
+                                            currentShuffledList,
+                                            5
+                                        ) > 0
+                                    ) {
+                                        val data =
+                                            (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                        _preview.postValue(Resource.Success(data))
+                                        setKey(bannerCacheKey, previewResponses.toList())
+                                    }
+
+                                    // 3. Load more items in the background
+                                    if (updatePreviewResponses(
+                                            previewResponses,
+                                            previewResponsesAdded,
+                                            currentShuffledList,
+                                            5
+                                        ) > 0
+                                    ) {
+                                        val data =
+                                            (previewResponsesAdded.size < currentShuffledList.size) to previewResponses
+                                        _preview.postValue(Resource.Success(data))
+                                        setKey(bannerCacheKey, previewResponses.toList())
+                                    }
                                 }
                             }
                         }
@@ -642,7 +688,7 @@ class HomeViewModel : ViewModel() {
             val hasRealData = currentPage is Resource.Success && 
                 _apiName.value == preferredApiName &&
                 currentPage.value.values.any { row ->
-                    row.list.list.any { !it.url.startsWith("loading://") }
+                    row.list.list.isNotEmpty() && row.list.list.any { !it.url.startsWith("loading://") }
                 }
 
             if (!forceReload && (hasRealData || (currentLoading != null && currentLoading == preferredApiName))) {
